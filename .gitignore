@@ -1,0 +1,10 @@
+# Local build toolchain / caches (not part of the firmware source)
+.arduino15/
+.arduino-user/
+tools/
+src_tmp/
+
+# Arduino build output and logs
+build/
+build_*/
+*.log
