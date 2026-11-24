@@ -32,11 +32,11 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check pyinstaller==6.15.0
       - run: python -m unittest tools.test_recon_report
-      - run: python -m PyInstaller --onefile --windowed --name Marauder-Recon-Converter tools/recon_converter.py
+      - run: python -m PyInstaller --onefile --windowed --name PocketNode-Recon-Converter tools/recon_converter.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: Marauder-Recon-Converter-${{ matrix.name }}
+          name: PocketNode-Recon-Converter-${{ matrix.name }}
           path: |
-            dist/Marauder-Recon-Converter*
+            dist/PocketNode-Recon-Converter*
             tools/RECON_CONVERTER_README.md
           if-no-files-found: error

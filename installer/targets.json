@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "sourceWorkflow": ".github/workflows/build_parallel.yml",
-  "privateBuildFlags": ["MARAUDER_V8", "MARAUDER_MINI_V3", "DUAL_MINI_C5"],
+  "privateBuildFlags": ["POCKETNODE_V8", "POCKETNODE_MINI_V3", "DUAL_MINI_C5"],
   "targets": [
     {
       "id": "flipper-zero-wifi-dev-board",
       "displayName": "Flipper Zero WiFi Dev Board",
       "aliases": ["Flipper Zero", "WiFi Dev Board"],
-      "buildFlag": "MARAUDER_FLIPPER",
+      "buildFlag": "POCKETNODE_FLIPPER",
       "assetSuffix": "flipper",
       "chipFamily": "ESP32-S2",
       "esptoolChip": "esp32s2"
@@ -16,52 +16,52 @@
       "id": "flipper-zero-multiboard-s3",
       "displayName": "Flipper Zero Multi Board S3",
       "aliases": ["MultiBoard S3", "Multiboard S3"],
-      "buildFlag": "MARAUDER_MULTIBOARD_S3",
+      "buildFlag": "POCKETNODE_MULTIBOARD_S3",
       "assetSuffix": "multiboardS3",
       "chipFamily": "ESP32-S3",
       "esptoolChip": "esp32s3"
     },
     {
-      "id": "og-marauder",
-      "displayName": "OG Marauder",
-      "aliases": ["Marauder v4", "Old hardware"],
-      "buildFlag": "MARAUDER_V4",
+      "id": "og-pocketnode",
+      "displayName": "OG PocketNode",
+      "aliases": ["PocketNode v4", "Old hardware"],
+      "buildFlag": "POCKETNODE_V4",
       "assetSuffix": "old_hardware",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
-      "id": "marauder-v6",
-      "displayName": "Marauder v6",
+      "id": "pocketnode-v6",
+      "displayName": "PocketNode v6",
       "aliases": ["New hardware"],
-      "buildFlag": "MARAUDER_V6",
+      "buildFlag": "POCKETNODE_V6",
       "assetSuffix": "v6",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
-      "id": "marauder-v6-1",
-      "displayName": "Marauder v6.1",
-      "aliases": ["Marauder v6.2", "AWOK V2 screen", "AWOK V3 screen"],
-      "buildFlag": "MARAUDER_V6_1",
+      "id": "pocketnode-v6-1",
+      "displayName": "PocketNode v6.1",
+      "aliases": ["PocketNode v6.2", "AWOK V2 screen", "AWOK V3 screen"],
+      "buildFlag": "POCKETNODE_V6_1",
       "assetSuffix": "v6_1",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
-      "id": "marauder-kit",
-      "displayName": "Marauder Kit",
+      "id": "pocketnode-kit",
+      "displayName": "PocketNode Kit",
       "aliases": [],
-      "buildFlag": "MARAUDER_KIT",
+      "buildFlag": "POCKETNODE_KIT",
       "assetSuffix": "kit",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
-      "id": "marauder-mini",
-      "displayName": "Marauder Mini",
+      "id": "pocketnode-mini",
+      "displayName": "PocketNode Mini",
       "aliases": [],
-      "buildFlag": "MARAUDER_MINI",
+      "buildFlag": "POCKETNODE_MINI",
       "assetSuffix": "mini",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
@@ -76,11 +76,11 @@
       "esptoolChip": "esp32"
     },
     {
-      "id": "marauder-dev-board-pro",
-      "displayName": "Marauder Dev Board Pro",
+      "id": "pocketnode-dev-board-pro",
+      "displayName": "PocketNode Dev Board Pro",
       "aliases": ["BFFB", "AWOK V3 flipper"],
-      "buildFlag": "MARAUDER_DEV_BOARD_PRO",
-      "assetSuffix": "marauder_dev_board_pro",
+      "buildFlag": "POCKETNODE_DEV_BOARD_PRO",
+      "assetSuffix": "pocketnode_dev_board_pro",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
@@ -88,7 +88,7 @@
       "id": "m5stickc-plus",
       "displayName": "M5StickC Plus",
       "aliases": [],
-      "buildFlag": "MARAUDER_M5STICKC",
+      "buildFlag": "POCKETNODE_M5STICKC",
       "assetSuffix": "m5stickc_plus",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
@@ -97,7 +97,7 @@
       "id": "m5stickc-plus-2",
       "displayName": "M5StickC Plus 2",
       "aliases": [],
-      "buildFlag": "MARAUDER_M5STICKCP2",
+      "buildFlag": "POCKETNODE_M5STICKCP2",
       "assetSuffix": "m5stickc_plus2",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
@@ -106,7 +106,7 @@
       "id": "m5stack-core2-aws",
       "displayName": "M5Stack Core2 for AWS",
       "aliases": ["Core2 for AWS", "AWS IoT EduKit", "M5Stack Core2 AWS"],
-      "buildFlag": "MARAUDER_M5STACK_CORE2_AWS",
+      "buildFlag": "POCKETNODE_M5STACK_CORE2_AWS",
       "assetSuffix": "m5stack_core2_aws",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
@@ -115,52 +115,52 @@
       "id": "reverse-feather",
       "displayName": "ESP32-S2 Reverse Feather",
       "aliases": ["Rev Feather"],
-      "buildFlag": "MARAUDER_REV_FEATHER",
+      "buildFlag": "POCKETNODE_REV_FEATHER",
       "assetSuffix": "rev_feather",
       "chipFamily": "ESP32-S2",
       "esptoolChip": "esp32s2"
     },
     {
-      "id": "marauder-v7",
-      "displayName": "Marauder v7",
+      "id": "pocketnode-v7",
+      "displayName": "PocketNode v7",
       "aliases": [],
-      "buildFlag": "MARAUDER_V7",
-      "assetSuffix": "marauder_v7",
+      "buildFlag": "POCKETNODE_V7",
+      "assetSuffix": "pocketnode_v7",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
       "id": "cyd-2432s028",
-      "displayName": "Marauder CYD 2432S028",
+      "displayName": "PocketNode CYD 2432S028",
       "aliases": ["CYD 2432S028R"],
-      "buildFlag": "MARAUDER_CYD_MICRO",
+      "buildFlag": "POCKETNODE_CYD_MICRO",
       "assetSuffix": "cyd_2432S028",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
       "id": "cyd-2432s024-guition",
-      "displayName": "Marauder CYD 2432S024 GUITION",
+      "displayName": "PocketNode CYD 2432S024 GUITION",
       "aliases": ["RL Phantom"],
-      "buildFlag": "MARAUDER_CYD_GUITION",
+      "buildFlag": "POCKETNODE_CYD_GUITION",
       "assetSuffix": "cyd_2432S024_guition",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
       "id": "cyd-2432s028-2usb",
-      "displayName": "Marauder CYD 2432S028 2 USB",
+      "displayName": "PocketNode CYD 2432S028 2 USB",
       "aliases": [],
-      "buildFlag": "MARAUDER_CYD_2USB",
+      "buildFlag": "POCKETNODE_CYD_2USB",
       "assetSuffix": "cyd_2432S028_2usb",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
     },
     {
       "id": "cyd-3-5-inch",
-      "displayName": "Marauder CYD 3.5 inch",
+      "displayName": "PocketNode CYD 3.5 inch",
       "aliases": [],
-      "buildFlag": "MARAUDER_CYD_3_5_INCH",
+      "buildFlag": "POCKETNODE_CYD_3_5_INCH",
       "assetSuffix": "cyd_3_5_inch",
       "chipFamily": "ESP32",
       "esptoolChip": "esp32"
@@ -169,7 +169,7 @@
       "id": "m5cardputer",
       "displayName": "M5 Cardputer",
       "aliases": [],
-      "buildFlag": "MARAUDER_CARDPUTER",
+      "buildFlag": "POCKETNODE_CARDPUTER",
       "assetSuffix": "m5cardputer",
       "chipFamily": "ESP32-S3",
       "esptoolChip": "esp32s3"
@@ -178,7 +178,7 @@
       "id": "m5cardputer-adv",
       "displayName": "M5 Cardputer ADV",
       "aliases": [],
-      "buildFlag": "MARAUDER_CARDPUTER_ADV",
+      "buildFlag": "POCKETNODE_CARDPUTER_ADV",
       "assetSuffix": "m5cardputer_adv",
       "chipFamily": "ESP32-S3",
       "esptoolChip": "esp32s3"
@@ -190,9 +190,9 @@
         "ESP32-C5 DevKit",
         "BFFB V2",
         "C5 Lowkey",
-        "Marauder C5 Adapter"
+        "PocketNode C5 Adapter"
       ],
-      "buildFlag": "MARAUDER_C5",
+      "buildFlag": "POCKETNODE_C5",
       "assetSuffix": "esp32c5devkitc1",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
@@ -210,7 +210,7 @@
       "id": "lilygo-t-dongle-c5",
       "displayName": "LilyGo T-Dongle C5",
       "aliases": ["T-Dongle C5", "T Dongle C5"],
-      "buildFlag": "MARAUDER_T_DONGLE_C5",
+      "buildFlag": "POCKETNODE_T_DONGLE_C5",
       "assetSuffix": "t_dongle_c5",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
@@ -219,25 +219,25 @@
       "id": "m5-nano-c6",
       "displayName": "M5 Nano C6",
       "aliases": ["M5NanoC6"],
-      "buildFlag": "MARAUDER_M5_NANO_C6",
+      "buildFlag": "POCKETNODE_M5_NANO_C6",
       "assetSuffix": "m5nanoc6",
       "chipFamily": "ESP32-C6",
       "esptoolChip": "esp32c6"
     },
     {
-      "id": "marauder-pancake",
-      "displayName": "Marauder Pancake",
-      "aliases": ["Pancake Marauder V8"],
-      "buildFlag": "MARAUDER_PANCAKE",
+      "id": "pocketnode-pancake",
+      "displayName": "PocketNode Pancake",
+      "aliases": ["Pancake PocketNode V8"],
+      "buildFlag": "POCKETNODE_PANCAKE",
       "assetSuffix": "pancake",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
     },
     {
-      "id": "marauder-c5-3-5",
+      "id": "pocketnode-c5-3-5",
       "displayName": "Waveshare ESP32-C5-Touch-LCD-3.5",
       "aliases": ["Waveshare ESP32-C5-Touch-LCD-3.5", "WS C5 3.5"],
-      "buildFlag": "MARAUDER_WS_C5_35",
+      "buildFlag": "POCKETNODE_WS_C5_35",
       "assetSuffix": "ws_c5_35",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
@@ -246,25 +246,25 @@
       "id": "poom",
       "displayName": "POOM",
       "aliases": ["Stellar IoT POOM"],
-      "buildFlag": "MARAUDER_POOM",
+      "buildFlag": "POCKETNODE_POOM",
       "assetSuffix": "poom",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
     },
     {
-      "id": "marauder-v8",
-      "displayName": "Marauder v8",
+      "id": "pocketnode-v8",
+      "displayName": "PocketNode v8",
       "aliases": [],
-      "buildFlag": "MARAUDER_V8",
+      "buildFlag": "POCKETNODE_V8",
       "assetSuffix": "v8",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"
     },
     {
-      "id": "marauder-mini-v3",
-      "displayName": "Marauder Mini v3",
+      "id": "pocketnode-mini-v3",
+      "displayName": "PocketNode Mini v3",
       "aliases": ["Mini v3"],
-      "buildFlag": "MARAUDER_MINI_V3",
+      "buildFlag": "POCKETNODE_MINI_V3",
       "assetSuffix": "mini_v3",
       "chipFamily": "ESP32-C5",
       "esptoolChip": "esp32c5"

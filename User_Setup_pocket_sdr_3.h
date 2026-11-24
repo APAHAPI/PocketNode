@@ -19,8 +19,8 @@
 //#define RPI_DRIVER
 
 // Only define one driver, the other ones must be commented out
-//#define ILI9341_DRIVER // OG Marauder
-#define ST7735_DRIVER    // Marauder Mini  // Define additional parameters below for this display
+//#define ILI9341_DRIVER // OG PocketNode
+#define ST7735_DRIVER    // PocketNode Mini  // Define additional parameters below for this display
 //#define ILI9163_DRIVER     // Define additional parameters below for this display
 //#define S6D02A1_DRIVER
 //#define RPI_ILI9486_DRIVER // 20MHz maximum SPI
@@ -52,10 +52,10 @@
 
 // For ST7789, ST7735 and ILI9163 ONLY, define the pixel width and height in portrait orientation
  #define TFT_WIDTH  80
-// #define TFT_WIDTH  128 // Marauder Mini
+// #define TFT_WIDTH  128 // PocketNode Mini
 // #define TFT_WIDTH  240 // ST7789 240 x 240 and 240 x 320
  #define TFT_HEIGHT 160
-// #define TFT_HEIGHT 128 // Marauder Mini
+// #define TFT_HEIGHT 128 // PocketNode Mini
 // #define TFT_HEIGHT 240 // ST7789 240 x 240
 // #define TFT_HEIGHT 320 // ST7789 240 x 320
 
@@ -164,7 +164,7 @@
 // For ESP32 Dev board (only tested with ILI9341 display)
 // The hardware SPI can be mapped to any pins
 
-// Marauder Mini
+// PocketNode Mini
 // Drone Detector v1
 
 #define TFT_CS   23  // Chip select control pin D8
@@ -189,7 +189,7 @@
 #define TFT_BL   32
 */
 /*
-// ESP32 Marauder 
+// ESP32 PocketNode 
 #define TFT_MISO 19
 #define TFT_MOSI 23
 #define TFT_SCLK 18
@@ -302,7 +302,7 @@
 //#define SPI_FREQUENCY   5000000
 // #define SPI_FREQUENCY  10000000
 // #define SPI_FREQUENCY  20000000
-#define SPI_FREQUENCY  27000000 // Marauder // Actually sets it to 26.67MHz = 80/3
+#define SPI_FREQUENCY  27000000 // PocketNode // Actually sets it to 26.67MHz = 80/3
 // #define SPI_FREQUENCY  40000000
 // #define SPI_FREQUENCY  80000000
 

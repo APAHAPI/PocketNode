@@ -35,8 +35,8 @@ void test_null_frame_is_rejected() {
 
 namespace {
 
-marauder::BeaconIdentity makeIdentity(uint8_t channel) {
-  marauder::BeaconIdentity identity;
+pocketnode::BeaconIdentity makeIdentity(uint8_t channel) {
+  pocketnode::BeaconIdentity identity;
   const char* ssid = "Visible Test AP";
   identity.ssid_length = strlen(ssid);
   memcpy(identity.ssid, ssid, identity.ssid_length + 1);
@@ -68,9 +68,9 @@ const uint8_t* findInformationElement(
 }  // namespace
 
 void test_24ghz_open_beacon_has_exact_valid_structure() {
-  uint8_t frame[marauder::kMaxOpenBeaconFrameLength];
-  const marauder::BeaconIdentity identity = makeIdentity(6);
-  const size_t frame_length = marauder::buildOpenBeaconFrame(
+  uint8_t frame[pocketnode::kMaxOpenBeaconFrameLength];
+  const pocketnode::BeaconIdentity identity = makeIdentity(6);
+  const size_t frame_length = pocketnode::buildOpenBeaconFrame(
     frame,
     sizeof(frame),
     identity,
@@ -97,9 +97,9 @@ void test_24ghz_open_beacon_has_exact_valid_structure() {
 }
 
 void test_5ghz_open_beacon_uses_ofdm_rates_without_ds_parameter() {
-  uint8_t frame[marauder::kMaxOpenBeaconFrameLength];
-  const marauder::BeaconIdentity identity = makeIdentity(149);
-  const size_t frame_length = marauder::buildOpenBeaconFrame(
+  uint8_t frame[pocketnode::kMaxOpenBeaconFrameLength];
+  const pocketnode::BeaconIdentity identity = makeIdentity(149);
+  const size_t frame_length = pocketnode::buildOpenBeaconFrame(
     frame,
     sizeof(frame),
     identity,
@@ -120,24 +120,24 @@ void test_beacon_builder_rejects_short_output_buffer() {
   uint8_t frame[48];
   TEST_ASSERT_EQUAL_UINT32(
     0,
-    marauder::buildOpenBeaconFrame(frame, sizeof(frame), makeIdentity(1), 0)
+    pocketnode::buildOpenBeaconFrame(frame, sizeof(frame), makeIdentity(1), 0)
   );
 }
 
 void test_bssid_is_normalized_to_local_unicast() {
   uint8_t bssid[] = {0xff, 0xaa, 0xbb, 0xcc, 0xdd, 0xee};
-  marauder::makeLocalUnicastBssid(bssid);
+  pocketnode::makeLocalUnicastBssid(bssid);
   TEST_ASSERT_EQUAL_HEX8(0xfe, bssid[0]);
   TEST_ASSERT_EQUAL_UINT8(0, bssid[0] & 0x01);
   TEST_ASSERT_EQUAL_UINT8(0x02, bssid[0] & 0x02);
 }
 
 void test_beacon_cycle_expiry_is_millis_wrap_safe() {
-  TEST_ASSERT_EQUAL_UINT32(30, marauder::kRandomBeaconIdentityCount);
-  TEST_ASSERT_EQUAL_UINT32(10000, marauder::kRandomBeaconCycleMs);
-  TEST_ASSERT_FALSE(marauder::beaconCycleExpired(10999, 1000, 10000));
-  TEST_ASSERT_TRUE(marauder::beaconCycleExpired(11000, 1000, 10000));
-  TEST_ASSERT_TRUE(marauder::beaconCycleExpired(
+  TEST_ASSERT_EQUAL_UINT32(30, pocketnode::kRandomBeaconIdentityCount);
+  TEST_ASSERT_EQUAL_UINT32(10000, pocketnode::kRandomBeaconCycleMs);
+  TEST_ASSERT_FALSE(pocketnode::beaconCycleExpired(10999, 1000, 10000));
+  TEST_ASSERT_TRUE(pocketnode::beaconCycleExpired(11000, 1000, 10000));
+  TEST_ASSERT_TRUE(pocketnode::beaconCycleExpired(
     600,
     std::numeric_limits<uint32_t>::max() - 500,
     1000

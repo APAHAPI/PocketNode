@@ -78,7 +78,7 @@ void test_churn_height_scales_and_clamps() {
 
 void test_truncation_preserves_both_ends() {
   char output[10];
-  reconTruncate("MarauderNetwork", output, sizeof(output));
+  reconTruncate("PocketNodeNetwork", output, sizeof(output));
   TEST_ASSERT_EQUAL_STRING("Mar..work", output);
   reconTruncate("short", output, sizeof(output));
   TEST_ASSERT_EQUAL_STRING("short", output);

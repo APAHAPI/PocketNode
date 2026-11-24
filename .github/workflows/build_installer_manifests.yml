@@ -158,7 +158,7 @@ jobs:
           path: CustomAdafruit_NeoPixel
 
       - name: Install APA102 for LilyGo T-Dongle C5
-        if: matrix.board.flag == 'MARAUDER_T_DONGLE_C5'
+        if: matrix.board.flag == 'POCKETNODE_T_DONGLE_C5'
         uses: actions/checkout@v4
         with:
           repository: pololu/apa102-arduino
@@ -236,13 +236,13 @@ jobs:
           fi
 
       - name: Configure LilyGo T-Dongle C5 partition table
-        if: matrix.board.flag == 'MARAUDER_T_DONGLE_C5'
-        run: cp installer/partitions/t_dongle_c5.csv esp32_marauder/partitions.csv
+        if: matrix.board.flag == 'POCKETNODE_T_DONGLE_C5'
+        run: cp installer/partitions/t_dongle_c5.csv esp32_pocketnode/partitions.csv
 
-      - name: Build Marauder for ${{ matrix.board.name }}
+      - name: Build PocketNode for ${{ matrix.board.name }}
         uses: ArminJo/arduino-test-compile@v3.3.0
         with:
-          sketch-names: esp32_marauder.ino
+          sketch-names: esp32_pocketnode.ino
           arduino-board-fqbn: ${{ matrix.board.fbqn }}
           set-build-path: true
           extra-arduino-cli-args: "--warnings none --build-property compiler.cpp.extra_flags='-D${{ matrix.board.flag }}'"
@@ -251,9 +251,9 @@ jobs:
 
       - name: Generate authoritative installer assets
         run: |
-          VERSION_DOT=$(grep '#define MARAUDER_VERSION' ./esp32_marauder/configs.h | sed -E 's/.*"v([^"]+)"/v\1/')
+          VERSION_DOT=$(grep '#define POCKETNODE_VERSION' ./esp32_pocketnode/configs.h | sed -E 's/.*"v([^"]+)"/v\1/')
           DATE=$(date +%Y%m%d)
-          BUILD_DIR=./esp32_marauder/build
+          BUILD_DIR=./esp32_pocketnode/build
 
           if [[ "${{ github.event_name }}" == "release" && "$VERSION_DOT" != "${{ github.event.release.tag_name }}" ]]; then
             echo "Release tag ${{ github.event.release.tag_name }} does not match firmware version $VERSION_DOT" >&2
@@ -264,7 +264,7 @@ jobs:
             --fqbn "${{ matrix.board.fbqn }}" \
             --build-path "$BUILD_DIR" \
             --show-properties=expanded \
-            ./esp32_marauder > "$BUILD_DIR/arduino-build-properties.txt"
+            ./esp32_pocketnode > "$BUILD_DIR/arduino-build-properties.txt"
 
           python3 tools/installer_manifest.py \
             --generate-target \
@@ -317,8 +317,8 @@ jobs:
             ASSETS=$(gh api "repos/${{ github.repository }}/releases/${{ github.event.release.id }}/assets" \
               --paginate \
               --jq '.[].name')
-            if grep -Fxq 'marauder-v8.installer.json' <<< "$ASSETS" && \
-               grep -Fxq 'marauder-mini-v3.installer.json' <<< "$ASSETS" && \
+            if grep -Fxq 'pocketnode-v8.installer.json' <<< "$ASSETS" && \
+               grep -Fxq 'pocketnode-mini-v3.installer.json' <<< "$ASSETS" && \
                grep -Fxq 'dual-mini-c5.installer.json' <<< "$ASSETS"; then
               gh release download "${{ github.event.release.tag_name }}" \
                 --repo "${{ github.repository }}" \
@@ -327,9 +327,9 @@ jobs:
               gh release download "${{ github.event.release.tag_name }}" \
                 --repo "${{ github.repository }}" \
                 --dir private-targets \
-                --pattern 'esp32_marauder_installer_*.bin'
+                --pattern 'esp32_pocketnode_installer_*.bin'
               test "$(find private-targets -maxdepth 1 -name '*.installer.json' | wc -l)" -eq 3
-              test "$(find private-targets -maxdepth 1 -name 'esp32_marauder_installer_*.bin' | wc -l)" -eq 12
+              test "$(find private-targets -maxdepth 1 -name 'esp32_pocketnode_installer_*.bin' | wc -l)" -eq 12
               exit 0
             fi
             sleep 10
@@ -379,7 +379,7 @@ jobs:
           members = sorted(assets.glob("*.bin")) + [assets / "firmware-manifest.json"]
           if not members[-1].is_file() or not any(path.suffix == ".bin" for path in members):
               raise SystemExit("Installer bundle inputs are incomplete")
-          with ZipFile(assets / "marauder-installer-assets.zip", "w", ZIP_DEFLATED) as archive:
+          with ZipFile(assets / "pocketnode-installer-assets.zip", "w", ZIP_DEFLATED) as archive:
               for path in members:
                   archive.write(path, path.name)
           PY
@@ -388,7 +388,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: installer-release-bundle
-          path: release-assets/marauder-installer-assets.zip
+          path: release-assets/pocketnode-installer-assets.zip
           if-no-files-found: error
           retention-days: 5
 
@@ -411,7 +411,7 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           fail_on_unmatched_files: true
-          files: release-assets/marauder-installer-assets.zip
+          files: release-assets/pocketnode-installer-assets.zip
 
       - name: Remove temporary private C5 handoff assets
         env:
@@ -419,7 +419,7 @@ jobs:
         run: |
           gh api "repos/${{ github.repository }}/releases/${{ github.event.release.id }}/assets" \
             --paginate \
-            --jq '.[] | select(.name == "marauder-v8.installer.json" or .name == "marauder-mini-v3.installer.json" or .name == "dual-mini-c5.installer.json" or (.name | startswith("esp32_marauder_installer_") and (contains("_v8") or contains("_mini_v3") or contains("_dual_mini_c5")))) | .id' |
+            --jq '.[] | select(.name == "pocketnode-v8.installer.json" or .name == "pocketnode-mini-v3.installer.json" or .name == "dual-mini-c5.installer.json" or (.name | startswith("esp32_pocketnode_installer_") and (contains("_v8") or contains("_mini_v3") or contains("_dual_mini_c5")))) | .id' |
           while read -r asset_id; do
             test -n "$asset_id"
             gh api --method DELETE "repos/${{ github.repository }}/releases/assets/$asset_id"

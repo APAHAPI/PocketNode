@@ -1,6 +1,6 @@
 # Installer manifest
 
-`targets.json` is the canonical installer identity registry for all stable firmware build targets. It maps each build flag to a stable target ID, aliases, release asset suffix, browser-facing chip family, and esptool chip name. `privateBuildFlags` identifies Marauder v8, Marauder Mini v3, and Dual Mini C5, which are built only in the private TFT repository.
+`targets.json` is the canonical installer identity registry for all stable firmware build targets. It maps each build flag to a stable target ID, aliases, release asset suffix, browser-facing chip family, and esptool chip name. `privateBuildFlags` identifies PocketNode v8, PocketNode Mini v3, and Dual Mini C5, which are built only in the private TFT repository.
 
 The normal release workflow, `.github/workflows/build_parallel.yml`, remains unchanged and continues producing its existing downloadable application binaries. Installer automation lives only in the additive `.github/workflows/build_installer_manifests.yml` workflow.
 
@@ -20,7 +20,7 @@ For stable releases, the combine job refuses to create `firmware-manifest.json` 
 - Manual dispatch is artifact-only; it does not create, publish, or modify a release.
 - Publishing a non-prerelease GitHub release triggers an independent rebuild from that release tag. Only after all 22 targets and the combined manifest pass does the workflow attach the additive installer assets to the already-published release.
 - The installer workflow never invokes or replaces the normal release workflow, and it never renames or removes the normal downloadable binaries.
-- Every additive installer binary uses the `esp32_marauder_installer_` namespace so release attachment cannot collide with or overwrite a normal binary filename.
+- Every additive installer binary uses the `esp32_pocketnode_installer_` namespace so release attachment cannot collide with or overwrite a normal binary filename.
 
 Nightly releases intentionally do not publish installer manifests at launch.
 

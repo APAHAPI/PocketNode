@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/justcallmekoko/ESP32Marauder/master/installer/firmware-manifest.schema.json",
-  "title": "ESP32 Marauder stable installer release manifest",
+  "$id": "https://raw.githubusercontent.com/justcallmekoko/ESP32PocketNode/master/installer/firmware-manifest.schema.json",
+  "title": "ESP32 PocketNode stable installer release manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,9 +18,9 @@
   "properties": {
     "$schema": { "type": "string", "format": "uri" },
     "schemaVersion": { "const": 1 },
-    "kind": { "const": "esp32-marauder-installer-release" },
+    "kind": { "const": "esp32-pocketnode-installer-release" },
     "metadataStatus": { "const": "authoritative" },
-    "sourceRepository": { "const": "justcallmekoko/ESP32Marauder" },
+    "sourceRepository": { "const": "justcallmekoko/ESP32PocketNode" },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "channel": { "const": "stable" },
     "version": { "type": "string", "pattern": "^v[0-9A-Za-z._-]+$" },

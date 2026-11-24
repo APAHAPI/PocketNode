@@ -6,8 +6,8 @@ void setUp() {}
 void tearDown() {}
 
 void assertLayoutFits(int16_t width, int16_t height) {
-  const marauder::BootSplashLayout layout =
-      marauder::bootSplashLayout(width, height);
+  const pocketnode::BootSplashLayout layout =
+      pocketnode::bootSplashLayout(width, height);
   TEST_ASSERT_GREATER_OR_EQUAL_INT16(0, layout.title_y);
   TEST_ASSERT_GREATER_OR_EQUAL_INT16(0, layout.logo_x);
   TEST_ASSERT_GREATER_OR_EQUAL_INT16(0, layout.logo_y);
@@ -18,17 +18,17 @@ void assertLayoutFits(int16_t width, int16_t height) {
 }
 
 void test_layout_fits_mini_v3() {
-  const marauder::BootSplashLayout layout =
-      marauder::bootSplashLayout(128, 128);
+  const pocketnode::BootSplashLayout layout =
+      pocketnode::bootSplashLayout(128, 128);
   assertLayoutFits(128, 128);
   TEST_ASSERT_EQUAL_UINT8(1, layout.text_size);
 }
 
 void test_layout_fits_v8_with_half_size_logo() {
-  const marauder::BootSplashLayout mini =
-      marauder::bootSplashLayout(128, 128);
-  const marauder::BootSplashLayout v8 =
-      marauder::bootSplashLayout(240, 320);
+  const pocketnode::BootSplashLayout mini =
+      pocketnode::bootSplashLayout(128, 128);
+  const pocketnode::BootSplashLayout v8 =
+      pocketnode::bootSplashLayout(240, 320);
   assertLayoutFits(240, 320);
   TEST_ASSERT_EQUAL_UINT8(1, v8.text_size);
   TEST_ASSERT_EQUAL_INT16(79, v8.logo_x);

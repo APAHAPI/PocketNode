@@ -1,4 +1,4 @@
-// Marauder board: Waveshare ESP32-C5-Touch-LCD-3.5 (ST7796, 320x480).
+// PocketNode board: Waveshare ESP32-C5-Touch-LCD-3.5 (ST7796, 320x480).
 // Pin map verified against Waveshare's own example repo (07_lvgl_demo,
 // 03_SD_Card) and the board schematic. LCD reset and backlight are driven by
 // the on-board I/O expander (0x24), not a GPIO, so TFT_RST/TFT_BL are unused

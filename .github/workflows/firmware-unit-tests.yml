@@ -33,7 +33,7 @@ jobs:
         run: .venv/bin/platformio test -e native
 
       - name: Generate coverage report
-        run: .venv/bin/gcovr --root . --filter esp32_marauder --exclude test --cobertura coverage.xml
+        run: .venv/bin/gcovr --root . --filter esp32_pocketnode --exclude test --cobertura coverage.xml
 
       - name: Include all firmware sources in coverage
         run: python3 tools/whole_source_coverage.py coverage.xml

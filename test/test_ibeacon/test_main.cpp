@@ -11,8 +11,8 @@ void test_parses_ibeacon_manufacturer_payload() {
     0xb0, 0x60, 0xd0, 0xf5, 0xa7, 0x10, 0x96, 0xe0,
     0x12, 0x34, 0xab, 0xcd, 0xc5
   };
-  marauder::IBeaconPayload beacon;
-  TEST_ASSERT_TRUE(marauder::parseIBeacon(payload, sizeof(payload), beacon));
+  pocketnode::IBeaconPayload beacon;
+  TEST_ASSERT_TRUE(pocketnode::parseIBeacon(payload, sizeof(payload), beacon));
   TEST_ASSERT_EQUAL_HEX8(0xe2, beacon.uuid[0]);
   TEST_ASSERT_EQUAL_HEX8(0xe0, beacon.uuid[15]);
   TEST_ASSERT_EQUAL_HEX16(0x1234, beacon.major);
@@ -23,9 +23,9 @@ void test_parses_ibeacon_manufacturer_payload() {
 void test_rejects_truncated_or_wrong_company_payload() {
   const uint8_t truncated[] = {0x4c, 0x00, 0x02, 0x15, 0x00};
   uint8_t wrong[25] = {0x4d, 0x00, 0x02, 0x15};
-  marauder::IBeaconPayload beacon;
-  TEST_ASSERT_FALSE(marauder::parseIBeacon(truncated, sizeof(truncated), beacon));
-  TEST_ASSERT_FALSE(marauder::parseIBeacon(wrong, sizeof(wrong), beacon));
+  pocketnode::IBeaconPayload beacon;
+  TEST_ASSERT_FALSE(pocketnode::parseIBeacon(truncated, sizeof(truncated), beacon));
+  TEST_ASSERT_FALSE(pocketnode::parseIBeacon(wrong, sizeof(wrong), beacon));
 }
 
 void test_finds_signature_after_advertising_headers() {
@@ -36,27 +36,27 @@ void test_finds_signature_after_advertising_headers() {
   payload[9] = 0x15;
   payload[29] = 0x00;
   payload[30] = 0xc0;
-  marauder::IBeaconPayload beacon;
-  TEST_ASSERT_TRUE(marauder::parseIBeacon(payload, sizeof(payload), beacon));
+  pocketnode::IBeaconPayload beacon;
+  TEST_ASSERT_TRUE(pocketnode::parseIBeacon(payload, sizeof(payload), beacon));
   TEST_ASSERT_EQUAL_INT8(-64, beacon.measured_power);
 }
 
 void test_identity_uses_uuid_major_and_minor_not_transmitter_mac() {
-  marauder::IBeaconPayload first;
-  marauder::IBeaconPayload clone;
+  pocketnode::IBeaconPayload first;
+  pocketnode::IBeaconPayload clone;
   first.uuid[0] = clone.uuid[0] = 0xaa;
   first.uuid[15] = clone.uuid[15] = 0x55;
   first.major = clone.major = 7;
   first.minor = clone.minor = 42;
   first.measured_power = -59;
   clone.measured_power = -70;
-  TEST_ASSERT_TRUE(marauder::sameIBeacon(first, clone));
+  TEST_ASSERT_TRUE(pocketnode::sameIBeacon(first, clone));
 
   clone.uuid[8] = 1;
-  TEST_ASSERT_FALSE(marauder::sameIBeacon(first, clone));
+  TEST_ASSERT_FALSE(pocketnode::sameIBeacon(first, clone));
   clone.uuid[8] = 0;
   clone.minor++;
-  TEST_ASSERT_FALSE(marauder::sameIBeacon(first, clone));
+  TEST_ASSERT_FALSE(pocketnode::sameIBeacon(first, clone));
 }
 
 }  // namespace

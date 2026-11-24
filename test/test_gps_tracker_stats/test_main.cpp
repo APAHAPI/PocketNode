@@ -6,7 +6,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_reset_clears_session_and_elapsed_handles_rollover() {
-  marauder::GpsTrackerStats stats;
+  pocketnode::GpsTrackerStats stats;
   stats.reset(UINT32_MAX - 10);
 
   TEST_ASSERT_EQUAL_UINT32(16, stats.elapsedMs(5));
@@ -15,13 +15,13 @@ void test_reset_clears_session_and_elapsed_handles_rollover() {
 }
 
 void test_known_coordinates_produce_expected_distance() {
-  const float distance = marauder::GpsTrackerStats::distanceBetweenMeters(
+  const float distance = pocketnode::GpsTrackerStats::distanceBetweenMeters(
       40748147, -73985364, 40758147, -73985364);
   TEST_ASSERT_FLOAT_WITHIN(2.0f, 1111.95f, distance);
 }
 
 void test_first_fix_sets_origin_without_adding_distance() {
-  marauder::GpsTrackerStats stats;
+  pocketnode::GpsTrackerStats stats;
   stats.reset(1000);
 
   TEST_ASSERT_TRUE(stats.update(40748147, -73985364, 2.0f, 2000));
@@ -31,7 +31,7 @@ void test_first_fix_sets_origin_without_adding_distance() {
 }
 
 void test_real_movement_accumulates_and_reports_speed() {
-  marauder::GpsTrackerStats stats;
+  pocketnode::GpsTrackerStats stats;
   stats.reset(0);
   stats.update(40748147, -73985364, 2.0f, 1000);
 
@@ -42,7 +42,7 @@ void test_real_movement_accumulates_and_reports_speed() {
 }
 
 void test_accuracy_jitter_and_impossible_jump_are_not_accumulated() {
-  marauder::GpsTrackerStats stats;
+  pocketnode::GpsTrackerStats stats;
   stats.reset(0);
   stats.update(40748147, -73985364, 8.0f, 1000);
 

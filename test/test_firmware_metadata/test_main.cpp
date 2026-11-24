@@ -5,15 +5,15 @@
 
 #include "FirmwareMetadata.h"
 
-using MarauderFirmware::Metadata;
-using MarauderFirmware::MetadataScanner;
+using PocketNodeFirmware::Metadata;
+using PocketNodeFirmware::MetadataScanner;
 
 namespace {
 
 Metadata makeMetadata(const char* hardware, const char* chip) {
   Metadata metadata = {
     {'M', 'R', 'D', 'R', 'F', 'W', 'I', 'D'},
-    MarauderFirmware::METADATA_SCHEMA_VERSION,
+    PocketNodeFirmware::METADATA_SCHEMA_VERSION,
     {0, 0, 0},
     {},
     {},
@@ -41,7 +41,7 @@ std::vector<uint8_t> imageWith(const Metadata& metadata) {
 }
 
 void test_scanner_finds_valid_metadata_inside_image() {
-  Metadata expected = makeMetadata("Marauder v8", "esp32c5");
+  Metadata expected = makeMetadata("PocketNode v8", "esp32c5");
   bool found = false;
   Metadata actual = scan(imageWith(expected), found);
   TEST_ASSERT_TRUE(found);
@@ -50,7 +50,7 @@ void test_scanner_finds_valid_metadata_inside_image() {
 }
 
 void test_scanner_rejects_invalid_trailer() {
-  Metadata metadata = makeMetadata("Marauder v8", "esp32c5");
+  Metadata metadata = makeMetadata("PocketNode v8", "esp32c5");
   metadata.end_magic[0] = 'X';
   bool found = true;
   scan(imageWith(metadata), found);
@@ -60,7 +60,7 @@ void test_scanner_rejects_invalid_trailer() {
 void test_scanner_recovers_when_false_magic_precedes_metadata() {
   Metadata invalid = makeMetadata("Wrong", "esp32");
   invalid.end_magic[0] = 'X';
-  Metadata expected = makeMetadata("Marauder v8", "esp32c5");
+  Metadata expected = makeMetadata("PocketNode v8", "esp32c5");
   std::vector<uint8_t> image = imageWith(invalid);
   std::vector<uint8_t> valid_image = imageWith(expected);
   image.insert(image.end(), valid_image.begin(), valid_image.end());
@@ -71,19 +71,19 @@ void test_scanner_recovers_when_false_magic_precedes_metadata() {
 }
 
 void test_metadata_match_requires_hardware_and_chip() {
-  Metadata current = makeMetadata("Marauder v8", "esp32c5");
-  TEST_ASSERT_TRUE(MarauderFirmware::metadataMatches(
-    makeMetadata("Marauder v8", "esp32c5"), current));
-  TEST_ASSERT_FALSE(MarauderFirmware::metadataMatches(
-    makeMetadata("Marauder Mini v3", "esp32c5"), current));
-  TEST_ASSERT_FALSE(MarauderFirmware::metadataMatches(
-    makeMetadata("Marauder v8", "esp32s3"), current));
+  Metadata current = makeMetadata("PocketNode v8", "esp32c5");
+  TEST_ASSERT_TRUE(PocketNodeFirmware::metadataMatches(
+    makeMetadata("PocketNode v8", "esp32c5"), current));
+  TEST_ASSERT_FALSE(PocketNodeFirmware::metadataMatches(
+    makeMetadata("PocketNode Mini v3", "esp32c5"), current));
+  TEST_ASSERT_FALSE(PocketNodeFirmware::metadataMatches(
+    makeMetadata("PocketNode v8", "esp32s3"), current));
 }
 
 void test_metadata_requires_terminated_identity_fields() {
-  Metadata metadata = makeMetadata("Marauder v8", "esp32c5");
+  Metadata metadata = makeMetadata("PocketNode v8", "esp32c5");
   memset(metadata.hardware, 'A', sizeof(metadata.hardware));
-  TEST_ASSERT_FALSE(MarauderFirmware::validMetadata(metadata));
+  TEST_ASSERT_FALSE(PocketNodeFirmware::validMetadata(metadata));
 }
 
 }  // namespace

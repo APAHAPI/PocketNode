@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Marauder (please complete the following information if applicable):**
+**PocketNode (please complete the following information if applicable):**
  - Firmware version: [e.g. v0.9.17]
  - Hardware version: [e.g. OG] 
 
