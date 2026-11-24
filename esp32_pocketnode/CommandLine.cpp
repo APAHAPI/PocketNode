@@ -69,7 +69,6 @@ void CommandLine::RunSetup() {
   #else
     Serial.println(F("         ESP32 PocketNode      \n"));
     Serial.println("            " + version_number + "\n");
-    Serial.println(F("       By: justcallmekoko\n"));
   #endif
   Serial.println(F("--------------------------------\n\n"));
   
