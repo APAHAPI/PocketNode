@@ -1,105 +1,229 @@
-# PocketNode ESP32-S3 — Headless Firmware QA Report
+# PocketNode ESP32-S3 — Fix: `remoteid scan` aborted inside `coex_core_enable()`
 
-**Device:** ESP32-S3 on COM17 @ 115200 baud
-**Firmware:** PocketNode `v0.0.0` (ESP-IDF v4.4.5), app partition `app0`
-**Method:** temporary `pyserial` harness (kept outside the git working tree, deleted after the run); 4 passes over COM17
-**Scope:** every compiled headless command except SD/file ops (`save`, `load`, `ls`, `upload`) and GPS (`gpsdata`, `gps`, `gpspoi`, `gpstracker`, `nmea`)
-**Safety:** passive only — no `attack`, `blespam`, `spoofat`, `evilportal`, `karma` was ever sent. Each scan test ended with `stopscan` + ~1.5 s settle.
+**Device:** ESP32-S3, COM17 @ 115200 (UART0 via CH343), firmware `v0.0.0`, ESP-IDF v4.4.5
+**Changed files:** `esp32_pocketnode/WiFiScan.cpp`, `esp32_pocketnode/WiFiScanRemoteId.h`
+**Status:** fixed, compiled, flashed, stress-tested — **uncommitted**, nothing staged, nothing pushed
 
-## Result summary
+## 1. Diagnosis
 
-| # | Group | Command | Result | Evidence |
-|---|-------|---------|--------|----------|
-| 1 | System | `help` | **PASS** | 58 command lines printed, no truncation |
-| 2 | System | `info` | **PASS** | `Firmware: PocketNode \| v0.0.0 \| app0 \| IDF v4.4.5`, MACs printed |
-| 3 | System | `settings` | **PASS** | 630 B settings table, no crash |
-| 4 | System | `channel` | **PASS** | reports `1` |
-| 5 | System | `channel -s 6` | **PASS** | reports `6`, radio retunes |
-| 6 | Wi-Fi | `scanall` | **PASS** | 6 APs + 3 station→AP records streamed |
-| 7 | Wi-Fi | `list -a` | **PASS** | `[0]..[5]` with CH and RSSI |
-| 8 | Wi-Fi | `list -c` | **PASS** | executes cleanly (0 clients at that moment) |
-| 9 | Wi-Fi | `list -s` | **PASS** | executes cleanly |
-| 10 | Wi-Fi | `ssid -a -n TestNode` | **PASS** | echoes `TestNode`; appears in `list -s` |
-| 11 | Wi-Fi | `select -a 0,1` | **PASS** | `2 selected, 0 unselected`; `(selected)` markers appear |
-| 12 | Wi-Fi | `clearlist -a` | **PASS** | list back to empty |
-| 13 | Sniffer | `sniffbeacon` | **PASS** | 416 B of beacon lines (AZIR, ch 1), clean stop |
-| 14 | Sniffer | `sniffdeauth` | **PASS** | starts/stops cleanly; 0 deauth frames (quiet band) |
-| 15 | Sniffer | `sniffpmkid` | **PASS** | live counters: Mgmt 12, Data 0, Beacon 8, EAPOL 0, `DEAUTH TX: FALSE` |
-| 16 | Sniffer | `sniffsae` | **PASS** | starts/stops cleanly; no SAE frames in range |
-| 17 | Sniffer | `remoteid scan` | **FAIL** | firmware abort — see defect section |
-| 18 | Sniffer | `remoteid list` | **PASS** | prints cleanly |
-| 19 | Sniffer | `csimotion start` | **UNSUPPORTED** | not in compiled help (no `csimotion` command) |
-| 20 | Sniffer | `mactrack` | **PASS** | 858 B stream, clean stop |
-| 21 | Sniffer | `pingscan` | **PASS (no-op)** | returns prompt with no output — needs an associated network, doesn't crash |
-| 22 | BLE | `sniffbt` | **PASS** | 13 BLE advertisements captured immediately (RSSI −27…−77) |
-| 23 | BLE | Wi-Fi→BLE switch | **PASS** | no heap corruption, no brownout, no panic |
-| 24 | System | `reboot` | **PASS** | banner `PocketNode / v0.0.0` after `rst:0xc` (normal SW reset), responsive |
-
-Totals: **PASS 22, FAIL 1, UNSUPPORTED 1** (`scanap` is not compiled; `scanall` was used).
-
-Compiled command set reported by `help` on this build:
+Original crash (from the QA run, 1 in 5 `remoteid scan` invocations):
 
 ```
-add arpscan attack blespam brightness channel clearlist cloneapmac clonestamac
-evilportal findmy foxhunt geofence gps gpsdata gpspoi gpstracker info join karma
-led list load ls mactrack nmea packetcount pingscan portscan protocolinfo randapmac
-randstamac reboot recon remoteid save scanall select settings sniffbeacon sniffbt
-sniffdeauth sniffmultissid sniffpinescan sniffpmkid sniffprobe sniffpwn sniffraw
-sniffsae sniffskim spoofat ssid stopscan update upload
-```
-
-Note: no `csimotion`, no `scanap`, no `wardrive` in this build, so those were reported as unsupported rather than tested.
-
-## Defect: `remoteid scan` aborts the firmware (intermittent)
-
-```
-#remoteid scan
-Starting Remote ID scan. Stop with stopscan
-RID scheduler: NAN dwell CH6/CH149 when supported; beacon sweep constrained by configured radio plan
-
 abort() was called at PC 0x420871c6 on core 1
-Backtrace: 0x40377322 0x4037f3cd 0x40385659 0x420871c6 0x4208700f 0x420677fc 0x4202611e 0x420177d4 ...
-rst:0xc (RTC_SW_CPU_RST)   <- device rebooted itself
+Backtrace: ... esp_bt_controller_enable -> coex_enable -> coex_core_enable -> abort
+  <- NimBLEDevice::init (NimBLEDevice.cpp:770)
+  <- WiFiScan::setupRemoteIdBle()   at WiFiScan.cpp:7405
 ```
 
-Decoded with `xtensa-esp32s3-elf-addr2line -pfiaC -e build/esp32_pocketnode.ino.elf`:
+Two defects in the original sequence:
+
+1. **`RunRemoteIdScan()` started Wi-Fi, changed channel, and immediately enabled the BT controller.**
+   `changeChannel(6)` only queues an ioctl to the Wi-Fi task; `pmTask`/`ppTask` processes it asynchronously.
+   `setupRemoteIdBle()` then called `esp_bt_controller_enable()` while that channel change was still in
+   flight. `coex_core_enable()` runs on the same Wi-Fi task path and aborts when the radio state it sees
+   is not the state it expects — hence the intermittency (quiet band = Wi-Fi task idle fast = usually fine;
+   busy band or a preceding sniffer = task busy = abort).
+2. **`NimBLEDevice::init("")` was called unconditionally.** After `sniffbt` (and any earlier `remoteid scan`
+   that did not fully tear down), the controller is already enabled, so this issued a second
+   `esp_bt_controller_enable()`, which reaches the same aborted coexistence hook.
+
+Both abandoned experiments are worth recording because they show what does *not* work on this IDF build:
+
+- Setting `esp_wifi_set_ps(WIFI_PS_MIN_MODEM)` before the BT enable, while Wi-Fi is live, aborts in the
+  Wi-Fi task: `abort -> pm_set_sleep_type -> wifi_set_ps_process -> ieee80211_ioctl_process -> ppTask`
+  (and it made the failure deterministic: 12/12).
+- Enabling BT **before** starting Wi-Fi aborts at Wi-Fi start:
+  `abort -> coex_core_enable -> coex_enable -> coex_enable_wrapper (esp_adapter.c:600) -> wifi_hw_start`.
+  So Wi-Fi-first is the only viable order for this firmware/IDF combination.
+
+## 2. The fix
+
+### `WiFiScanRemoteId.h` — `RunRemoteIdScan()`
+
+- Tear down any leftover Wi-Fi session before starting the scanner, so `remoteid scan` never inherits a
+  driver that a previous sniffer left running (`if (wifi_initialized) shutdownWiFi();`).
+- After `changeChannel(6)`, **wait (bounded, 500 ms) until `esp_wifi_get_channel()` actually reports
+  channel 6** before enabling the BT controller. This is a real synchronisation with the Wi-Fi task rather
+  than a magic `delay()`, and it is what removes the race.
+
+### `WiFiScan.cpp` — `setupRemoteIdBle()`
+
+- Guard the controller bring-up with `NimBLEDevice::getInitialized()`; `NimBLEDevice::init("")` is only
+  called when the controller is genuinely down. If it is already up (e.g. after `sniffbt`), the existing
+  observer is stopped, its results cleared and restarted, so no second `esp_bt_controller_enable()` happens.
+- Behaviour otherwise unchanged: same scan parameters (interval 83 / window 40, passive, duplicate filter
+  off), same callbacks, `ble_initialized` / `ble_scanning` still set, `stopscan` still tears BLE down through
+  the existing `shutdownBLE()` path (`pBLEScan->stop()`, `clearResults()`, `NimBLEDevice::deinit()`), so a
+  following `scanall` / `sniffbeacon` / `sniffbt` starts from a clean state.
+
+No changes were made to `stopscan`, `shutdownWiFi()`, `shutdownBLE()` or any other scan path.
+
+## 3. Build & flash
 
 ```
-panic_abort (esp_system/panic.c:408)
- <- esp_bt_controller_enable (bt/controller/esp32c3/bt.c:1479)
- <- NimBLEDevice::init (NimBLEDevice.cpp:770)
- <- WiFiScan::setupRemoteIdBle()   at esp32_pocketnode/WiFiScan.cpp:7405
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs,FlashSize=4M --warnings default
+  -> Sketch uses 1,079,221 bytes (54%), Global variables 69,060 bytes (21%), exit 0, 0 errors
+arduino-cli upload -p COM17 --fqbn ...:UploadSpeed=921600  -> Hash of data verified, hard reset
 ```
 
-### Root cause
+27 warnings remain build-wide, all pre-existing and untouched by this change
+(`WiFiScan.cpp:2330/2334/2353` beacon-spam `random()` narrowing, `WiFiScan.h:571/1045`). The new code
+produces no warnings.
 
-Not a Remote-ID parsing bug. `WiFiScanRemoteId.h` re-initialises the Wi-Fi driver, sets `WIFI_MODE_NULL`, prints the `RID scheduler:` line and then calls `setupRemoteIdBle()`, which calls `NimBLEDevice::init()`. Enabling the BT controller there enters the coexistence hook (`coex_enable` → `coex_core_enable`) and aborts while Wi-Fi is in that just-reconfigured / NULL-mode state. Both coex options are enabled in this platform build (`CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y`, `CONFIG_SW_COEXIST_ENABLE=y`).
+## 4. Stress test (COM17 @ 115200, pyserial harness, deleted afterwards)
 
-### Reproducibility
+All cycles: cold boot via RTS reset, `stopscan` + 1.2 s settle between scanners, every response scanned for
+`abort()`, `Backtrace`, `Guru Meditation`, `Brownout`, `assert failed`, `StoreProhibited`,
+`LoadProhibited`, `Stack canary`, and unexpected `ESP-ROM`/`rst:` banners.
 
-**1 crash in 5 `remoteid scan` invocations** — it is a race, not deterministic:
+| Batch | Pattern | Cycles | Result |
+|-------|---------|--------|--------|
+| 1 | cold boot → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets |
+| 1 | cold boot → `scanall` 3 s → `sniffbeacon` 2 s → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets |
+| 1 | cold boot → `sniffbt` 3 s → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets; 12–13 BLE devices captured each time |
+| 2 | same three patterns with 8 s Remote ID dwell | 11 | 0 aborts, 0 resets |
+| 3 | post-fix regression mix (rid → scanall → sniffbeacon → sniffbt → rid → info) | 1 | all clean: scanall found APs, 29 beacon lines, 10 BLE devices, `info` OK |
+| 4 | final image re-flash sanity (3 rid cycles, one after `sniffbt`) | 3 | 0 aborts, `scanall` + `info` still work |
 
-- cold boot → `remoteid scan` ×3, all crash-free
-- full sniffer sequence (`scanall` → lists → sniffs) → crashed once, then crash-free ×2 more
+**Totals: 23 stress cycles + 4 final sanity cycles = 27 Remote ID starts, 0 aborts, 0 unexpected resets.**
+Before the fix the same harness produced 1 abort in 5 starts on the shipped image (and 12/12 with the
+abandoned PS-based approach).
 
-Because the same command sometimes reboots the unit, this is a field-reliability problem, not just a test artifact.
+Observations while testing:
 
-### Suggested investigation (not applied)
+- Remote ID produced no RID frames — expected, no drones/UAS broadcasting in this location; the scanner
+  starts, dwells and stops without faults.
+- `sniffbt` continues to work before and after a Remote ID run, so the BLE reuse/teardown path is intact.
+- No heap-corruption, brownout or watchdog messages appeared anywhere in the transcripts.
 
-- Tear the Wi-Fi sniffer down (`esp_wifi_stop` / `esp_wifi_deinit`) before `NimBLEDevice::init`, or
-- Defer BLE init until after the first channel-schedule tick of the RID scanner, and
-- Guard `esp_bt_controller_enable` / `NimBLEDevice::init` against re-entry when the BT controller is already enabled (`sniffbt` previously enabled it).
+## 5. `git status`
 
-## Non-defects worth recording
+```
+ M esp32_pocketnode/WiFiScan.cpp
+ M esp32_pocketnode/WiFiScanRemoteId.h
+```
 
-- `reboot` initially flagged because the boot log contains `rst:0xc (RTC_SW_CPU_RST)` — that is the normal reset reason for a software reboot, not a panic.
-- `sniffdeauth` / `sniffsae` / `remoteid list` produced no frames: no deauth, SAE or RID traffic was in the air at this location. This proves the listeners start and stop cleanly; it does not prove frame decoding.
-- `sniffbt -t ibeacon` returned nothing because no iBeacons were nearby; unfiltered `sniffbt` captured 13 devices immediately, so the BLE path itself works.
-- `pingscan` prints nothing without an associated network (station mode never joined). No crash and `stopscan` still works.
-- `settings` was read only; the only state change made was the in-RAM `TestNode` SSID, cleared with `clearlist`.
+Nothing staged, nothing committed, nothing pushed. The pyserial harnesses were deleted; only git-ignored
+run logs remain under `tools/`.
 
-## What was not tested
+## 6. `git diff`
 
-- SD-card features (`save`, `load`, `ls`, `upload`) and GPS commands — excluded per instructions.
-- Active/offensive commands (`attack`, `blespam`, `spoofat`, `evilportal`, `karma`, `findmy`) — excluded by the passive-only rule.
-- Any feature requiring a joined network (`join`-dependent `pingscan`/`portscan`/`arpscan` behaviour), and long-duration soak testing.
+```diff
+diff --git a/esp32_pocketnode/WiFiScan.cpp b/esp32_pocketnode/WiFiScan.cpp
+index 05c3a5d..cdd695d 100644
+--- a/esp32_pocketnode/WiFiScan.cpp
++++ b/esp32_pocketnode/WiFiScan.cpp
+@@ -7400,28 +7400,44 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
+ 
+ void WiFiScan::setupRemoteIdBle() {
+   #ifdef HAS_BT
+-    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
+-    NimBLEDevice::setScanDuplicateCacheSize(0);
+-    NimBLEDevice::init("");
++    // The RID scanner starts Wi-Fi first and calls this only once the driver
++    // reports its dwell channel: enabling the BT controller while the Wi-Fi
++    // task is still starting or changing channel aborts inside
++    // coex_core_enable(). A controller that sniffbt already enabled is reused,
++    // because a second esp_bt_controller_enable() aborts the same way.
++    const bool ble_already_initialized = NimBLEDevice::getInitialized();
++    if (!ble_already_initialized) {
++      NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
++      NimBLEDevice::setScanDuplicateCacheSize(0);
++      NimBLEDevice::init("");
++    }
++
+     pBLEScan = NimBLEDevice::getScan();
+-    #ifndef HAS_NIMBLE_2
+-      pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
+-    #else
+-      pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
+-    #endif
+-    pBLEScan->setActiveScan(false);
+-    // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
+-    pBLEScan->setInterval(83);
+-    pBLEScan->setWindow(40);
+-    pBLEScan->setMaxResults(0);
+-    pBLEScan->setDuplicateFilter(false);
+-    #ifdef HAS_NIMBLE_2
+-      pBLEScan->start(0, false, false);
+-    #else
+-      pBLEScan->start(0, scanCompleteCB, false);
+-    #endif
+-    ble_initialized = true;
+-    ble_scanning = true;
++    if (pBLEScan != nullptr) {
++      if (ble_already_initialized) {
++        // Restart the observer so the RID callbacks are the ones dispatched.
++        pBLEScan->stop();
++        pBLEScan->clearResults();
++      }
++      #ifndef HAS_NIMBLE_2
++        pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
++      #else
++        pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
++      #endif
++      pBLEScan->setActiveScan(false);
++      // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
++      pBLEScan->setInterval(83);
++      pBLEScan->setWindow(40);
++      pBLEScan->setMaxResults(0);
++      pBLEScan->setDuplicateFilter(false);
++      #ifdef HAS_NIMBLE_2
++        pBLEScan->start(0, false, false);
++      #else
++        pBLEScan->start(0, scanCompleteCB, false);
++      #endif
++      ble_initialized = true;
++      ble_scanning = true;
++    }
+   #endif
+ }
+ 
+diff --git a/esp32_pocketnode/WiFiScanRemoteId.h b/esp32_pocketnode/WiFiScanRemoteId.h
+index 3a9382b..357bd62 100644
+--- a/esp32_pocketnode/WiFiScanRemoteId.h
++++ b/esp32_pocketnode/WiFiScanRemoteId.h
+@@ -257,6 +257,11 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
+     #endif
+   #endif
+ 
++  // Never enable the BT controller while a previous sniffer still owns the
++  // Wi-Fi driver: tear any live Wi-Fi session down first.
++  if (this->wifi_initialized)
++    this->shutdownWiFi();
++
+   esp_wifi_init(&cfg2);
+   #ifdef HAS_IDF_3
+     esp_wifi_set_country(&country);
+@@ -267,6 +272,17 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
+   wifi_initialized = true;
+   Serial.println("RID scheduler: NAN dwell CH6/CH149 when supported; beacon sweep constrained by configured radio plan");
+ 
++  // Enabling the BT controller while a channel change is still queued in the
++  // Wi-Fi task races the coexistence hook and intermittently aborted inside
++  // coex_core_enable(). Wait (bounded) until the driver reports the channel.
++  uint8_t rid_channel = 0;
++  wifi_second_chan_t rid_second = WIFI_SECOND_CHAN_NONE;
++  uint32_t rid_wait_start = millis();
++  while ((esp_wifi_get_channel(&rid_channel, &rid_second) != ESP_OK ||
++          rid_channel != 6) &&
++         ((millis() - rid_wait_start) < 500))
++    delay(5);
++
+   setupRemoteIdBle();
+ 
+   setLEDMode(MODE_SNIFF);
+```
+
+The diff above is the exact output of `git diff -- esp32_pocketnode` (this document is itself modified, so a bare `git diff` also lists it).
+
+## 7. Verification gaps (honest list)
+
+- No real Remote ID transmitter was present, so the fix was validated on lifecycle/stability only, not on
+  RID frame decoding.
+- The 500 ms channel-settle wait is bounded but not asserted: if the driver never reports channel 6 the code
+  proceeds anyway. That is deliberate (never block the CLI), but it means a pathological Wi-Fi task stall
+  could still reach the BT enable in an unexpected state.
+- Stress volume was ~27 starts; the original defect appeared at roughly 1 in 5, so this is strong evidence
+  but not a proof at scale. A longer soak (hundreds of cycles) would tighten confidence.
+- Only the S3 headless target was built and flashed; `HAS_NIMBLE_2` branches were not compiled here.

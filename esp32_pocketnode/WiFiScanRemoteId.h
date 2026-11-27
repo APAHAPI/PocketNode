@@ -257,6 +257,11 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
     #endif
   #endif
 
+  // Never enable the BT controller while a previous sniffer still owns the
+  // Wi-Fi driver: tear any live Wi-Fi session down first.
+  if (this->wifi_initialized)
+    this->shutdownWiFi();
+
   esp_wifi_init(&cfg2);
   #ifdef HAS_IDF_3
     esp_wifi_set_country(&country);
@@ -266,6 +271,17 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
   changeChannel(6);
   wifi_initialized = true;
   Serial.println("RID scheduler: NAN dwell CH6/CH149 when supported; beacon sweep constrained by configured radio plan");
+
+  // Enabling the BT controller while a channel change is still queued in the
+  // Wi-Fi task races the coexistence hook and intermittently aborted inside
+  // coex_core_enable(). Wait (bounded) until the driver reports the channel.
+  uint8_t rid_channel = 0;
+  wifi_second_chan_t rid_second = WIFI_SECOND_CHAN_NONE;
+  uint32_t rid_wait_start = millis();
+  while ((esp_wifi_get_channel(&rid_channel, &rid_second) != ESP_OK ||
+          rid_channel != 6) &&
+         ((millis() - rid_wait_start) < 500))
+    delay(5);
 
   setupRemoteIdBle();
 

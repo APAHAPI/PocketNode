@@ -7400,28 +7400,44 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
 
 void WiFiScan::setupRemoteIdBle() {
   #ifdef HAS_BT
-    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
-    NimBLEDevice::setScanDuplicateCacheSize(0);
-    NimBLEDevice::init("");
+    // The RID scanner starts Wi-Fi first and calls this only once the driver
+    // reports its dwell channel: enabling the BT controller while the Wi-Fi
+    // task is still starting or changing channel aborts inside
+    // coex_core_enable(). A controller that sniffbt already enabled is reused,
+    // because a second esp_bt_controller_enable() aborts the same way.
+    const bool ble_already_initialized = NimBLEDevice::getInitialized();
+    if (!ble_already_initialized) {
+      NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
+      NimBLEDevice::setScanDuplicateCacheSize(0);
+      NimBLEDevice::init("");
+    }
+
     pBLEScan = NimBLEDevice::getScan();
-    #ifndef HAS_NIMBLE_2
-      pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
-    #else
-      pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
-    #endif
-    pBLEScan->setActiveScan(false);
-    // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
-    pBLEScan->setInterval(83);
-    pBLEScan->setWindow(40);
-    pBLEScan->setMaxResults(0);
-    pBLEScan->setDuplicateFilter(false);
-    #ifdef HAS_NIMBLE_2
-      pBLEScan->start(0, false, false);
-    #else
-      pBLEScan->start(0, scanCompleteCB, false);
-    #endif
-    ble_initialized = true;
-    ble_scanning = true;
+    if (pBLEScan != nullptr) {
+      if (ble_already_initialized) {
+        // Restart the observer so the RID callbacks are the ones dispatched.
+        pBLEScan->stop();
+        pBLEScan->clearResults();
+      }
+      #ifndef HAS_NIMBLE_2
+        pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
+      #else
+        pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
+      #endif
+      pBLEScan->setActiveScan(false);
+      // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
+      pBLEScan->setInterval(83);
+      pBLEScan->setWindow(40);
+      pBLEScan->setMaxResults(0);
+      pBLEScan->setDuplicateFilter(false);
+      #ifdef HAS_NIMBLE_2
+        pBLEScan->start(0, false, false);
+      #else
+        pBLEScan->start(0, scanCompleteCB, false);
+      #endif
+      ble_initialized = true;
+      ble_scanning = true;
+    }
   #endif
 }
 
