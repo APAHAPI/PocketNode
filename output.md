@@ -1,229 +1,278 @@
-# PocketNode ESP32-S3 — Fix: `remoteid scan` aborted inside `coex_core_enable()`
+# PocketNode ESP32-S3 — Phone-offloaded GPS + storage (serial PCAP / WiGLE) and dual-port CLI
 
-**Device:** ESP32-S3, COM17 @ 115200 (UART0 via CH343), firmware `v0.0.0`, ESP-IDF v4.4.5
-**Changed files:** `esp32_pocketnode/WiFiScan.cpp`, `esp32_pocketnode/WiFiScanRemoteId.h`
-**Status:** fixed, compiled, flashed, stress-tested — **uncommitted**, nothing staged, nothing pushed
+**Device:** ESP32-S3, UART0 on COM17 @ 115200 (CH343), firmware `v0.0.0`, ESP-IDF v4.4.5, arduino-esp32 2.0.11
+**Changed files:** `configs.h`, `GpsInterface.{h,cpp}`, `CommandLine.{h,cpp}`, `WiFiScan.{h,cpp}` (+ new `PocketNodeSerial.{h,cpp}`)
+**Status:** implemented, compiled, flashed to COM17, serial QA passed — **uncommitted**, nothing staged, nothing pushed
 
-## 1. Diagnosis
+---
 
-Original crash (from the QA run, 1 in 5 `remoteid scan` invocations):
+## 1. Goal
 
-```
-abort() was called at PC 0x420871c6 on core 1
-Backtrace: ... esp_bt_controller_enable -> coex_enable -> coex_core_enable -> abort
-  <- NimBLEDevice::init (NimBLEDevice.cpp:770)
-  <- WiFiScan::setupRemoteIdBle()   at WiFiScan.cpp:7405
-```
+Run the headless ESP32-S3 as a capture engine for a phone over serial, with no SD card, no GPS module and
+no screen:
 
-Two defects in the original sequence:
+1. Accept NMEA from the host (phone GPS) and keep a live fix.
+2. Stream PCAP (and WiGLE CSV) over serial by default when `HAS_SD` is absent.
+3. Let either the laptop (UART0) or the phone (native USB-C) drive the board at the same time.
 
-1. **`RunRemoteIdScan()` started Wi-Fi, changed channel, and immediately enabled the BT controller.**
-   `changeChannel(6)` only queues an ioctl to the Wi-Fi task; `pmTask`/`ppTask` processes it asynchronously.
-   `setupRemoteIdBle()` then called `esp_bt_controller_enable()` while that channel change was still in
-   flight. `coex_core_enable()` runs on the same Wi-Fi task path and aborts when the radio state it sees
-   is not the state it expects — hence the intermittency (quiet band = Wi-Fi task idle fast = usually fine;
-   busy band or a preceding sniffer = task busy = abort).
-2. **`NimBLEDevice::init("")` was called unconditionally.** After `sniffbt` (and any earlier `remoteid scan`
-   that did not fully tear down), the controller is already enabled, so this issued a second
-   `esp_bt_controller_enable()`, which reaches the same aborted coexistence hook.
+---
 
-Both abandoned experiments are worth recording because they show what does *not* work on this IDF build:
+## 2. Design
 
-- Setting `esp_wifi_set_ps(WIFI_PS_MIN_MODEM)` before the BT enable, while Wi-Fi is live, aborts in the
-  Wi-Fi task: `abort -> pm_set_sleep_type -> wifi_set_ps_process -> ieee80211_ioctl_process -> ppTask`
-  (and it made the failure deterministic: 12/12).
-- Enabling BT **before** starting Wi-Fi aborts at Wi-Fi start:
-  `abort -> coex_core_enable -> coex_enable -> coex_enable_wrapper (esp_adapter.c:600) -> wifi_hw_start`.
-  So Wi-Fi-first is the only viable order for this firmware/IDF combination.
+### 2.1 GPS without a GPS UART
 
-## 2. The fix
+`POCKETNODE_S3` previously had no `HAS_GPS` at all, so every GPS command was compiled out. It now defines:
 
-### `WiFiScanRemoteId.h` — `RunRemoteIdScan()`
-
-- Tear down any leftover Wi-Fi session before starting the scanner, so `remoteid scan` never inherits a
-  driver that a previous sniffer left running (`if (wifi_initialized) shutdownWiFi();`).
-- After `changeChannel(6)`, **wait (bounded, 500 ms) until `esp_wifi_get_channel()` actually reports
-  channel 6** before enabling the BT controller. This is a real synchronisation with the Wi-Fi task rather
-  than a magic `delay()`, and it is what removes the race.
-
-### `WiFiScan.cpp` — `setupRemoteIdBle()`
-
-- Guard the controller bring-up with `NimBLEDevice::getInitialized()`; `NimBLEDevice::init("")` is only
-  called when the controller is genuinely down. If it is already up (e.g. after `sniffbt`), the existing
-  observer is stopped, its results cleared and restarted, so no second `esp_bt_controller_enable()` happens.
-- Behaviour otherwise unchanged: same scan parameters (interval 83 / window 40, passive, duplicate filter
-  off), same callbacks, `ble_initialized` / `ble_scanning` still set, `stopscan` still tears BLE down through
-  the existing `shutdownBLE()` path (`pBLEScan->stop()`, `clearResults()`, `NimBLEDevice::deinit()`), so a
-  following `scanall` / `sniffbeacon` / `sniffbt` starts from a clean state.
-
-No changes were made to `stopscan`, `shutdownWiFi()`, `shutdownBLE()` or any other scan path.
-
-## 3. Build & flash
-
-```
-arduino-cli compile --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs,FlashSize=4M --warnings default
-  -> Sketch uses 1,079,221 bytes (54%), Global variables 69,060 bytes (21%), exit 0, 0 errors
-arduino-cli upload -p COM17 --fqbn ...:UploadSpeed=921600  -> Hash of data verified, hard reset
+```c
+#define HAS_GPS
+#define GPS_NMEA_INJECTION
 ```
 
-27 warnings remain build-wide, all pre-existing and untouched by this change
-(`WiFiScan.cpp:2330/2334/2353` beacon-spam `random()` narrowing, `WiFiScan.h:571/1045`). The new code
-produces no warnings.
+`GPS_NMEA_INJECTION` is a new switch inside `GpsInterface`:
 
-## 4. Stress test (COM17 @ 115200, pyserial harness, deleted afterwards)
+- `begin()` sets `gps_enabled = true`, initializes the queue and installs the unknown-sentence handler,
+  then returns before touching `Serial2` (this target has no `GPS_TX`/`GPS_RX` at all — they are not
+  defined for `POCKETNODE_S3` in `configs.h`).
+- `main()` keeps the shared validity/`setGPSInfo()` tail but skips the `Serial2` drain.
+- `probeBaud()`, `setGpsTo115200From9600()`, `initGpsBaudAndForce115200()` and the `Serial2` global are
+  compiled out in this mode.
 
-All cycles: cold boot via RTS reset, `stopscan` + 1.2 s settle between scanners, every response scanned for
-`abort()`, `Backtrace`, `Guru Meditation`, `Brownout`, `assert failed`, `StoreProhibited`,
-`LoadProhibited`, `Stack canary`, and unexpected `ESP-ROM`/`rst:` banners.
+New public entry point:
 
-| Batch | Pattern | Cycles | Result |
-|-------|---------|--------|--------|
-| 1 | cold boot → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets |
-| 1 | cold boot → `scanall` 3 s → `sniffbeacon` 2 s → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets |
-| 1 | cold boot → `sniffbt` 3 s → `remoteid scan` 3 s → `stopscan` | 4 | 0 aborts, 0 resets; 12–13 BLE devices captured each time |
-| 2 | same three patterns with 8 s Remote ID dwell | 11 | 0 aborts, 0 resets |
-| 3 | post-fix regression mix (rid → scanall → sniffbeacon → sniffbt → rid → info) | 1 | all clean: scanall found APs, 29 beacon lines, 10 BLE devices, `info` OK |
-| 4 | final image re-flash sanity (3 rid cycles, one after `sniffbt`) | 3 | 0 aborts, `scanall` + `info` still work |
+```cpp
+void GpsInterface::injectNmea(const String& sentence) {
+  String line = sentence;
+  line.trim();
+  if (!line.startsWith("$")) return;
 
-**Totals: 23 stress cycles + 4 final sanity cycles = 27 Remote ID starts, 0 aborts, 0 unexpected resets.**
-Before the fix the same harness produced 1 abort in 5 starts on the shipped image (and 12/12 with the
-abandoned PS-based approach).
+  // Drop any half-received sentence left over from a previous connection so
+  // the first injected line cannot inherit a broken parser state.
+  nmea.process('\r');
 
-Observations while testing:
+  for (size_t i = 0; i < line.length(); i++)
+    nmea.process(line.charAt(i));
 
-- Remote ID produced no RID frames — expected, no drones/UAS broadcasting in this location; the scanner
-  starts, dwells and stops without faults.
-- `sniffbt` continues to work before and after a Remote ID run, so the BLE reuse/teardown path is intact.
-- No heap-corruption, brownout or watchdog messages appeared anywhere in the transcripts.
+  nmea.process('\r');
+  nmea.process('\n');
 
-## 5. `git status`
+  this->gps_enabled = true;
+  this->nmea_sentence = line;
+  this->setGPSInfo();
+}
+```
+
+The leading `\r` matters: without it the **first** sentence after boot was silently discarded (observed
+on hardware, see §4.1). MicroNMEA 2.0.6 also requires the fixed `hhmmss.ss` time field — `hhmmss,` makes it
+walk into the latitude field and fail.
+
+### 2.2 Dual-port serial
+
+`PocketNodeSerial` is a `Stream` that owns both ports:
+
+- `write()` → `Serial.write()` always, plus `USBSerial.write()` when the core exposes it.
+- `begin()` → real `Serial.begin(baud)` plus `pocketnode::beginUsb(baud)`.
+- USB is enabled only when the core is built with the hardware CDC (`ARDUINO_USB_MODE=1`) and UART0 keeps
+  `Serial` (`ARDUINO_USB_CDC_ON_BOOT=0`); `POCKETNODE_HAS_USB_SERIAL` is derived from those macros.
+- `USBSerial.setTxTimeoutMs(0)` so a host that stops reading makes writes drop, never block the scan loop.
+
+Existing code keeps calling `Serial.*` unchanged; `configs.h` appends
+
+```c
+#include "PocketNodeSerial.h"
+
+#if !defined(ARDUINO_USB_CDC_ON_BOOT) || !ARDUINO_USB_CDC_ON_BOOT
+  #define Serial pocketnode_serial
+#endif
+```
+
+so every translation unit that includes `configs.h` (all PocketNode sources) is mirrored without touching
+hundreds of call sites. Input is **not** merged through the proxy: `CommandLine::pollPort()` reads each real
+port with its own 512-byte line buffer, so two hosts cannot corrupt each other's lines and a port with no host
+costs nothing.
+
+```cpp
+void CommandLine::main(uint32_t currentTime) {
+  (void)currentTime;
+  this->pollPort(pocketnode::uartStream(), this->uart_line);
+  this->pollPort(pocketnode::usbStream(), this->usb_line);
+}
+```
+
+### 2.3 Serial storage as the default
+
+`CommandLine::runCommand()` previously set `wifi_scan_obj.save_serial` only from `-serial`. Now:
+
+```cpp
+#ifdef HAS_SD
+  wifi_scan_obj.save_serial = this->argSearch(&cmd_args, "-serial") != -1;
+#else
+  wifi_scan_obj.save_serial = true;
+#endif
+```
+
+`Buffer::openFile()` already tolerates `fs == NULL` and streams through `Buffer::saveSerial()`, which frames
+bytes as `[BUF/BEGIN]<payload>[BUF/CLOSE]` and now goes through the proxy (so PCAP/WiGLE reach both ports).
+A capture consumer strips the markers; the marker is required so console text cannot corrupt binary PCAP.
+
+### 2.4 WiGLE from `scanall`
+
+`scanall` is `WIFI_SCAN_AP_STA` (`RunAPScan`), which used to produce a PCAP only. Now, when there is no SD
+card and a fix is already present, it opens a WiGLE log, emits the standard header and appends AP rows from
+`apSnifferCallbackFull()`:
+
+```cpp
+#ifndef HAS_SD
+  this->wigle_serial_active = false;
+  #ifdef HAS_GPS
+    if (scan_mode == WIFI_SCAN_AP_STA &&
+        gps_obj.getGpsModuleStatus() && gps_obj.getFixStatus()) {
+      startLog("wardrive");
+      buffer_obj.append(this->header_line);
+      this->wigle_serial_active = true;
+    }
+  #endif
+#endif
+
+if (!this->wigle_serial_active) {
+  if (scan_mode != WIFI_SCAN_AP_STA) startPcap("ap");
+  else                               startPcap("ap_sta");
+}
+```
+
+Row shape (14 columns, matching `WIGLE_CSV_COLUMNS`):
 
 ```
+06:33:c2:dd:c1:dd,DOUAE,[WPA2_PSK],2094-03-23 12:35:19,6,2437,-60,48.1172981,11.5166664,545.40,2.25,,0,WIFI
+```
+
+**Known interaction (pre-existing):** running `sniffbeacon` immediately after `scanall`/`stopscan` captures
+no frames on this firmware; a fresh radio state captures normally. The QA therefore runs the PCAP capture
+before the AP/STA scan. This was not changed.
+
+---
+
+## 3. Build and flash
+
+```
+cd /p/tools
+./arduino-cli.exe --config-file arduino-cli.yaml compile --jobs 2 \
+  --fqbn "esp32:esp32:esp32s3:PartitionScheme=min_spiffs,FlashSize=4M,USBMode=hwcdc,CDCOnBoot=default" \
+  --warnings default --build-path P:/build P:/esp32_pocketnode
+```
+
+Result: exit 0, `Sketch uses 1104833 bytes (56%)`, `Global variables 69584 bytes (21%)`.
+`USBMode=hwcdc` is the menu default for `esp32s3`, so the board has the native CDC endpoint; `CDCOnBoot`
+stays disabled so `Serial` remains UART0. The tree also compiles with the previous FQBN
+(`PartitionScheme=min_spiffs,FlashSize=4M`), exit 0.
+
+```
+./arduino-cli.exe --config-file arduino-cli.yaml upload -p COM17 \
+  --fqbn "esp32:esp32:esp32s3:PartitionScheme=min_spiffs,FlashSize=4M,USBMode=hwcdc,CDCOnBoot=default,UploadSpeed=921600" \
+  --input-dir P:/build
+```
+
+`Hash of data verified.` — upload exit 0.
+
+Only pre-existing warnings remain (beacon-spam `random()` narrowing in `WiFiScan.{h,cpp}`, and
+`SDInterface.cpp:218` missing return in `getFile()`; that file was not modified). No warning comes from a
+file changed here.
+
+---
+
+## 4. Verification (COM17, temporary pyserial script + `Test/`, both deleted)
+
+### 4.1 NMEA injection
+
+Both the raw-line path and the `nmea <sentence>` command word:
+
+```
+[NMEA] GP Fix=Yes Sats=8 Lat=48.1172981 Lon=11.5166664 Alt=545.4 Acc=2.2 UTC=2094-03-23 12:35:19
+```
+
+`gpsdata` then reports the same live values (`Fix: Yes`, `Sats: 8`, `Lat: 48.1172981`, `Lon: 11.5166664`).
+
+Regression found during QA and fixed: the first sentence after every boot was rejected (`Fix=No`,
+`Lat=999.0000000`); the second identical sentence parsed. Cause: parser state inherited from boot. Fix:
+`injectNmea()` now terminates the buffer before feeding a new sentence (see §2.1). After the fix the first
+raw `$GPGGA` already reports `Fix=Yes`.
+
+### 4.2 PCAP over serial
+
+`sniffbeacon`, 6 s, frames reassembled from `[BUF/BEGIN]…[BUF/CLOSE]`:
+
+- 47,357 bytes, global header magic `d4c3b2a1`
+- 137 records; every record's `incl_len` walks the file to exactly the end (no truncation)
+- no `SD Card NOT Supported`/mount errors, no panic
+
+### 4.3 WiGLE over serial
+
+`scanall`, 10 s, with the injected fix:
+
+- 11,444 bytes, starts with `WigleWifi-1.6,appRelease=v0.0.0,…`
+- standard column header line, then non-empty 14-field `…,WIFI` rows carrying the injected
+  coordinates/altitude/accuracy and real BSSIDs/SSIDs/channels/frequencies
+- header appears exactly once
+
+### 4.4 Crash checks
+
+No `Guru Meditation`, `abort() was called`, `Backtrace:`, `assert failed` or `Stack canary watchpoint` in
+any transcript.
+
+---
+
+## 5. Limitations / not verified
+
+- **Native USB mirroring was not exercised.** The USB-C port is connected to the Android phone, so the PC
+  only enumerates COM17 (CH343, `VID:PID=1A86:55D3`). The USB path compiles into the image and command input
+  from either port is implemented, but a phone-side check is still required.
+- PCAP/WiGLE are validated by reassembling the `[BUF/…]` frames; a real capture app must strip those
+  markers. The payloads themselves are a clean PCAP stream and a clean CSV stream.
+- `scanall` only streams WiGLE when a fix already exists at scan start; otherwise it still writes PCAP.
+- PCAP/WiGLE throughput is bounded by 115200 UART. `Buffer` drops packets when its double buffer fills
+  (pre-existing behaviour).
+
+---
+
+## 6. Working tree
+
+```
+ M esp32_pocketnode/CommandLine.cpp
+ M esp32_pocketnode/CommandLine.h
+ M esp32_pocketnode/GpsInterface.cpp
+ M esp32_pocketnode/GpsInterface.h
  M esp32_pocketnode/WiFiScan.cpp
- M esp32_pocketnode/WiFiScanRemoteId.h
+ M esp32_pocketnode/WiFiScan.h
+ M esp32_pocketnode/configs.h
+?? esp32_pocketnode/PocketNodeSerial.cpp
+?? esp32_pocketnode/PocketNodeSerial.h
 ```
 
-Nothing staged, nothing committed, nothing pushed. The pyserial harnesses were deleted; only git-ignored
-run logs remain under `tools/`.
-
-## 6. `git diff`
-
-```diff
-diff --git a/esp32_pocketnode/WiFiScan.cpp b/esp32_pocketnode/WiFiScan.cpp
-index 05c3a5d..cdd695d 100644
---- a/esp32_pocketnode/WiFiScan.cpp
-+++ b/esp32_pocketnode/WiFiScan.cpp
-@@ -7400,28 +7400,44 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
- 
- void WiFiScan::setupRemoteIdBle() {
-   #ifdef HAS_BT
--    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
--    NimBLEDevice::setScanDuplicateCacheSize(0);
--    NimBLEDevice::init("");
-+    // The RID scanner starts Wi-Fi first and calls this only once the driver
-+    // reports its dwell channel: enabling the BT controller while the Wi-Fi
-+    // task is still starting or changing channel aborts inside
-+    // coex_core_enable(). A controller that sniffbt already enabled is reused,
-+    // because a second esp_bt_controller_enable() aborts the same way.
-+    const bool ble_already_initialized = NimBLEDevice::getInitialized();
-+    if (!ble_already_initialized) {
-+      NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
-+      NimBLEDevice::setScanDuplicateCacheSize(0);
-+      NimBLEDevice::init("");
-+    }
-+
-     pBLEScan = NimBLEDevice::getScan();
--    #ifndef HAS_NIMBLE_2
--      pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
--    #else
--      pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
--    #endif
--    pBLEScan->setActiveScan(false);
--    // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
--    pBLEScan->setInterval(83);
--    pBLEScan->setWindow(40);
--    pBLEScan->setMaxResults(0);
--    pBLEScan->setDuplicateFilter(false);
--    #ifdef HAS_NIMBLE_2
--      pBLEScan->start(0, false, false);
--    #else
--      pBLEScan->start(0, scanCompleteCB, false);
--    #endif
--    ble_initialized = true;
--    ble_scanning = true;
-+    if (pBLEScan != nullptr) {
-+      if (ble_already_initialized) {
-+        // Restart the observer so the RID callbacks are the ones dispatched.
-+        pBLEScan->stop();
-+        pBLEScan->clearResults();
-+      }
-+      #ifndef HAS_NIMBLE_2
-+        pBLEScan->setAdvertisedDeviceCallbacks(&bluetoothScanCallbacks, false);
-+      #else
-+        pBLEScan->setScanCallbacks(&bluetoothScanCallbacks, false);
-+      #endif
-+      pBLEScan->setActiveScan(false);
-+      // Avoid repeatedly masking Wi-Fi beacons sent at an 80 ms cadence.
-+      pBLEScan->setInterval(83);
-+      pBLEScan->setWindow(40);
-+      pBLEScan->setMaxResults(0);
-+      pBLEScan->setDuplicateFilter(false);
-+      #ifdef HAS_NIMBLE_2
-+        pBLEScan->start(0, false, false);
-+      #else
-+        pBLEScan->start(0, scanCompleteCB, false);
-+      #endif
-+      ble_initialized = true;
-+      ble_scanning = true;
-+    }
-   #endif
- }
- 
-diff --git a/esp32_pocketnode/WiFiScanRemoteId.h b/esp32_pocketnode/WiFiScanRemoteId.h
-index 3a9382b..357bd62 100644
---- a/esp32_pocketnode/WiFiScanRemoteId.h
-+++ b/esp32_pocketnode/WiFiScanRemoteId.h
-@@ -257,6 +257,11 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
-     #endif
-   #endif
- 
-+  // Never enable the BT controller while a previous sniffer still owns the
-+  // Wi-Fi driver: tear any live Wi-Fi session down first.
-+  if (this->wifi_initialized)
-+    this->shutdownWiFi();
-+
-   esp_wifi_init(&cfg2);
-   #ifdef HAS_IDF_3
-     esp_wifi_set_country(&country);
-@@ -267,6 +272,17 @@ void WiFiScan::RunRemoteIdScan(uint8_t scan_mode, uint16_t color) {
-   wifi_initialized = true;
-   Serial.println("RID scheduler: NAN dwell CH6/CH149 when supported; beacon sweep constrained by configured radio plan");
- 
-+  // Enabling the BT controller while a channel change is still queued in the
-+  // Wi-Fi task races the coexistence hook and intermittently aborted inside
-+  // coex_core_enable(). Wait (bounded) until the driver reports the channel.
-+  uint8_t rid_channel = 0;
-+  wifi_second_chan_t rid_second = WIFI_SECOND_CHAN_NONE;
-+  uint32_t rid_wait_start = millis();
-+  while ((esp_wifi_get_channel(&rid_channel, &rid_second) != ESP_OK ||
-+          rid_channel != 6) &&
-+         ((millis() - rid_wait_start) < 500))
-+    delay(5);
-+
-   setupRemoteIdBle();
- 
-   setLEDMode(MODE_SNIFF);
+```
+ esp32_pocketnode/CommandLine.cpp  | 94 +++++++++++++++++++++++++++++++++------
+ esp32_pocketnode/CommandLine.h    |  7 ++-
+ esp32_pocketnode/GpsInterface.cpp | 40 +++++++++++++++++
+ esp32_pocketnode/GpsInterface.h   |  4 ++
+ esp32_pocketnode/WiFiScan.cpp     | 41 +++++++++++++++--
+ esp32_pocketnode/WiFiScan.h       |  2 +
+ esp32_pocketnode/configs.h        | 15 ++++++
+ 7 files changed, 185 insertions(+), 18 deletions(-)
 ```
 
-The diff above is the exact output of `git diff -- esp32_pocketnode` (this document is itself modified, so a bare `git diff` also lists it).
+No commit, no push. Temporary `tools/serial_qa.py`, `tools/apply_edits.py`, `Test/` and the scratch build
+directory were removed; the QA transcript is kept in git-ignored `tools/qa_serial.log`.
 
-## 7. Verification gaps (honest list)
+---
 
-- No real Remote ID transmitter was present, so the fix was validated on lifecycle/stability only, not on
-  RID frame decoding.
-- The 500 ms channel-settle wait is bounded but not asserted: if the driver never reports channel 6 the code
-  proceeds anyway. That is deliberate (never block the CLI), but it means a pathological Wi-Fi task stall
-  could still reach the BT enable in an unexpected state.
-- Stress volume was ~27 starts; the original defect appeared at roughly 1 in 5, so this is strong evidence
-  but not a proof at scale. A longer soak (hundreds of cycles) would tighten confidence.
-- Only the S3 headless target was built and flashed; `HAS_NIMBLE_2` branches were not compiled here.
+## 7. Review notes
+
+Points worth a second opinion:
+
+1. **`#define Serial` in `configs.h`.** It is the only way to mirror ~1,000 existing call sites without
+   touching them. It is guarded to builds where `ARDUINO_USB_CDC_ON_BOOT` is 0 (so the core's
+   `extern HWCDC Serial;` / `extern USBCDC Serial;` declarations are never renamed), and it only takes
+   effect after `Arduino.h` has already been included, so the core's `Serial` object itself is untouched.
+2. **USB write policy.** `setTxTimeoutMs(0)` prefers dropping bytes over stalling; if the phone app needs
+   lossless USB capture, this should become a small ring buffer with a bounded wait instead.
+3. **`HAS_GPS` on a target without GPS hardware.** It re-enables `gpspoi`/`gpstracker`/`nmea`/`wardrive` and
+   their GPX/WiGLE writers; with no SD those now stream over serial too (marker-framed), which is intended
+   but not covered by the QA above.

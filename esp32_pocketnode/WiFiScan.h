@@ -1242,6 +1242,8 @@ class WiFiScan
     void tagPOI(const char* label = nullptr);
 
     bool save_serial = false;
+    // scanall streams WiGLE CSV when there is no SD card to write to.
+    bool wigle_serial_active = false;
     void startPcap(const char* file_name);
     void startLog(const char* file_name);
     void startGPX(const char* file_name);

@@ -23,13 +23,23 @@ MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
   static void lc76gSink(char c) { nmea.process(c); }
 #endif
 
+#ifndef GPS_NMEA_INJECTION
 HardwareSerial Serial2(GPS_SERIAL_INDEX);
 
 static const char *PCAS_SET_115200 = "$PCAS01,5*19\r\n";
 
 static const uint32_t PROBE_MS = 1200;
+#endif
 
 void GpsInterface::begin() {
+  #ifdef GPS_NMEA_INJECTION
+    // No GPS UART on this target: sentences arrive over the serial CLI.
+    this->gps_enabled = true;
+    this->type_flag = GPSTYPE_NATIVE;
+    this->disable_queue();
+    nmea.setUnknownSentenceHandler(gps_nmea_notimp);
+    return;
+  #else
 
   #ifdef HAS_GPS_LC76G_I2C
     // GPS is an LC76G on the shared I2C bus; there is no GPS UART.
@@ -82,9 +92,15 @@ void GpsInterface::begin() {
   this->disable_queue(); //init the queue, disabled, kill NULLs
 
   nmea.setUnknownSentenceHandler(gps_nmea_notimp);
+  #endif
 
 }
 
+#ifdef GPS_NMEA_INJECTION
+bool GpsInterface::probeBaud(uint32_t) { return false; }
+void GpsInterface::setGpsTo115200From9600() {}
+uint32_t GpsInterface::initGpsBaudAndForce115200() { return 0; }
+#else
 bool GpsInterface::probeBaud(uint32_t baud) {
   Serial2.end();
   delay(50);
@@ -149,6 +165,7 @@ uint32_t GpsInterface::initGpsBaudAndForce115200() {
   probeBaud(9600);
   return 0;
 }
+#endif
 
 //passthrough for other objects
 void gps_nmea_notimp(MicroNMEA& nmea){
@@ -783,6 +800,27 @@ String GpsInterface::getNmeaNotparsed() {
   return this->notparsed_nmea_sentence;
 }
 
+void GpsInterface::injectNmea(const String& sentence) {
+  String line = sentence;
+  line.trim();
+  if (!line.startsWith("$")) return;
+
+  // Drop any half-received sentence left over from a previous connection so
+  // the first injected line cannot inherit a broken parser state.
+  nmea.process('\r');
+
+  for (size_t i = 0; i < line.length(); i++)
+    nmea.process(line.charAt(i));
+
+  nmea.process('\r');
+  nmea.process('\n');
+
+  // The sentence came from a host, so the "module" is present by definition.
+  this->gps_enabled = true;
+  this->nmea_sentence = line;
+  this->setGPSInfo();
+}
+
 void GpsInterface::main() {
   #ifdef HAS_GPS_LC76G_I2C
     const uint32_t lc76gNow = millis();
@@ -800,6 +838,7 @@ void GpsInterface::main() {
     }
   #endif
 
+  #ifndef GPS_NMEA_INJECTION
   while (Serial2.available()) {
     //Fetch the character one by one
     char c = Serial2.read();
@@ -807,6 +846,7 @@ void GpsInterface::main() {
     //Pass the character to the library
     nmea.process(c);
   }
+  #endif
 
   uint8_t num_sat = nmea.getNumSatellites();
 

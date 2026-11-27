@@ -4407,10 +4407,26 @@ void WiFiScan::RunEvilPortal(uint8_t scan_mode, uint16_t color) {
 
 // Function to start running a beacon scan
 void WiFiScan::RunAPScan(uint8_t scan_mode, uint16_t color) {
-  if (scan_mode != WIFI_SCAN_AP_STA)
-    startPcap("ap");
-  else
-    startPcap("ap_sta");
+  #ifndef HAS_SD
+    // With no SD card, scanall streams WiGLE CSV for the phone to save as long
+    // as an injected GPS fix is available; otherwise it captures PCAP.
+    this->wigle_serial_active = false;
+    #ifdef HAS_GPS
+      if (scan_mode == WIFI_SCAN_AP_STA &&
+          gps_obj.getGpsModuleStatus() && gps_obj.getFixStatus()) {
+        startLog("wardrive");
+        buffer_obj.append(this->header_line);
+        this->wigle_serial_active = true;
+      }
+    #endif
+  #endif
+
+  if (!this->wigle_serial_active) {
+    if (scan_mode != WIFI_SCAN_AP_STA)
+      startPcap("ap");
+    else
+      startPcap("ap_sta");
+  }
 
   this->setLEDMode(MODE_SNIFF);
   #ifdef HAS_SCREEN
@@ -7647,6 +7663,23 @@ void WiFiScan::apSnifferCallbackFull(void* buf, wifi_promiscuous_pkt_type_t type
         }
 
         bssid.concat(addr);
+
+        if (wifi_scan_obj.wigle_serial_active && gps_obj.getFixStatus()) {
+          const uint16_t wigle_channel = snifferPacket->rx_ctrl.channel;
+          String wigle_line =
+            String(addr) + "," +
+            essid + "," +
+            wifi_scan_obj.security_int_to_string(security_type) + "," +
+            gps_obj.getDatetime() + "," +
+            (String)wigle_channel + "," +
+            (String)wigleFrequencyMHz(wigle_channel) + "," +
+            (String)snifferPacket->rx_ctrl.rssi + "," +
+            gps_obj.getLat() + "," +
+            gps_obj.getLon() + "," +
+            gps_obj.getAlt() + "," +
+            gps_obj.getAccuracy() + ",,0,WIFI\n";
+          buffer_obj.append(wigle_line);
+        }
   
         int temp_len = display_string.length();
         for (int i = 0; i < 50 - temp_len; i++)

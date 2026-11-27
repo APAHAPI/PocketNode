@@ -58,6 +58,10 @@ class GpsInterface {
     String getNmeaNotimp();
     String getNmeaNotparsed();
 
+    // Feeds one NMEA sentence (with or without trailing CR/LF) into the
+    // MicroNMEA parser and refreshes the fix state.
+    void injectNmea(const String& sentence);
+
     void setType(String t);
 
     void enqueue(MicroNMEA& nmea);

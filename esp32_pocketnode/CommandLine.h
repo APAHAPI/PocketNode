@@ -239,7 +239,9 @@ const char PROGMEM HELP_FOOT[] = "==================================";
 
 class CommandLine {
   private:
-    String getSerialInput();
+    void pollPort(Stream* port, String& line);
+    void printPrompt();
+    bool handleInjectedNmea(const String& sentence);
     LinkedList<String> parseCommand(String input, char* delim);
     String toLowerCase(String str);
     void filterAccessPoints(String filter);
@@ -250,6 +252,9 @@ class CommandLine {
     void showCounts(int selected, int unselected = -1);
     int argSearch(LinkedList<String>* cmd_args, const char* key);
     void startScanFromCLI(int scan_mode, uint16_t color, const char* scan_name);
+
+    String uart_line = "";
+    String usb_line = "";
 
     #if defined(POCKETNODE_S3)
     const char* ascii_art =

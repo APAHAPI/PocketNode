@@ -609,6 +609,11 @@
     // Serial PCAP capture is provided by the command line "-serial" switch and
     // needs neither SD nor PSRAM.
     #define HAS_BT
+    // GPS: no GPS UART is wired on this target, so GpsInterface accepts NMEA
+    // sentences injected over the serial CLI (see GpsInterface::injectNmea).
+    // This still gives wardrive/scanall a live fix for WiGLE output.
+    #define HAS_GPS
+    #define GPS_NMEA_INJECTION
     // Uncomment only when the S3 module actually has PSRAM fitted. Leaving it
     // off selects the low-RAM memory profile, which is safe on every S3 module.
     //#define HAS_PSRAM
@@ -3603,6 +3608,16 @@
   // isn't connected as shipped, and Pancake's GPS UART pins (14/13) are this
   // board's native USB, so the UART GPS path must never start.
   #define HAS_GPS_LC76G_I2C
+#endif
+
+//// SERIAL PORT MUX
+// All `Serial` output goes through a small proxy that mirrors it to the native
+// USB-C port when the core provides one, so either a laptop on UART0 or a phone
+// on the USB port can drive the board. See PocketNodeSerial.h.
+#include "PocketNodeSerial.h"
+
+#if !defined(ARDUINO_USB_CDC_ON_BOOT) || !ARDUINO_USB_CDC_ON_BOOT
+  #define Serial pocketnode_serial
 #endif
 
 #endif

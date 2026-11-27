@@ -75,23 +75,71 @@ void CommandLine::RunSetup() {
   Serial.print("> ");
 }
 
-String CommandLine::getSerialInput() {
-  String input = "";
+void CommandLine::printPrompt() {
+  Serial.print("> ");
+}
 
-  if (Serial.available() > 0)
-    input = Serial.readStringUntil('\n');
+// Reads complete lines from one port without blocking. Each port keeps its own
+// buffer, so a line split across reads, or two hosts typing at once, cannot
+// corrupt each other.
+void CommandLine::pollPort(Stream* port, String& line) {
+  if (!port) return;
 
-  input.trim();
-  return input;
+  while (port->available() > 0) {
+    const int value = port->read();
+    if (value < 0) break;
+
+    const char c = (char)value;
+    if (c == '\r') continue;
+
+    if (c == '\n') {
+      line.trim();
+      if (line.length() > 0) {
+        String command = line;
+        line = "";
+        this->runCommand(command);
+        this->printPrompt();
+      } else {
+        line = "";
+      }
+      continue;
+    }
+
+    if (line.length() < 512) line += c;
+  }
 }
 
 void CommandLine::main(uint32_t currentTime) {
-  String input = this->getSerialInput();
+  (void)currentTime;
+  this->pollPort(pocketnode::uartStream(), this->uart_line);
+  this->pollPort(pocketnode::usbStream(), this->usb_line);
+}
 
-  this->runCommand(input);
+bool CommandLine::handleInjectedNmea(const String& sentence) {
+  #ifdef HAS_GPS
+    gps_obj.injectNmea(sentence);
 
-  if (input != "")
-    Serial.print("> ");
+    Serial.print(F("[NMEA] "));
+    Serial.print(sentence.substring(1, 3));
+    Serial.print(F(" Fix="));
+    Serial.print(gps_obj.getFixStatusAsString());
+    Serial.print(F(" Sats="));
+    Serial.print(gps_obj.getNumSatsString());
+    Serial.print(F(" Lat="));
+    Serial.print(gps_obj.getLat());
+    Serial.print(F(" Lon="));
+    Serial.print(gps_obj.getLon());
+    Serial.print(F(" Alt="));
+    Serial.print(gps_obj.getAlt(), 1);
+    Serial.print(F(" Acc="));
+    Serial.print(gps_obj.getAccuracy(), 1);
+    Serial.print(F(" UTC="));
+    Serial.println(gps_obj.getDatetime());
+    return true;
+  #else
+    (void)sentence;
+    return false;
+  #endif
 }
 
 LinkedList<String> CommandLine::parseCommand(String input, char* delim) {
@@ -269,6 +317,15 @@ void CommandLine::startScanFromCLI(int scan_mode, uint16_t color, const char* sc
 
 void CommandLine::runCommand(String input) {
   if (input == "") return;
+
+  // Raw NMEA lines (from a phone app or a laptop) feed the GPS parser directly.
+  if (input.length() > 6 && input.charAt(0) == '$' &&
+      (input.startsWith("$GP") || input.startsWith("$GN") ||
+       input.startsWith("$GL") || input.startsWith("$GA") ||
+       input.startsWith("$GB") || input.startsWith("$BD"))) {
+    this->handleInjectedNmea(input);
+    return;
+  }
 
   if(wifi_scan_obj.scanning() && wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA){
     if(input != STOPSCAN_CMD) return;    
@@ -518,6 +575,11 @@ void CommandLine::runCommand(String input) {
   }
   else if (cmd_args.get(0) == NMEA_CMD) {
     #ifdef HAS_GPS
+      // `nmea $GPGGA,...` injects one sentence instead of starting a stream.
+      if (cmd_args.size() > 1 && cmd_args.get(1).startsWith("$")) {
+        this->handleInjectedNmea(cmd_args.get(1));
+        return;
+      }
       if (gps_obj.getGpsModuleStatus()) {
         #ifdef HAS_SCREEN
           menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
@@ -846,8 +908,14 @@ void CommandLine::runCommand(String input) {
 
   //// WiFi/Bluetooth Scan/Attack commands
   if (!wifi_scan_obj.scanning()) {
-    // Dump pcap/log to serial too, valid for all scan/attack commands
-    wifi_scan_obj.save_serial = this->argSearch(&cmd_args, "-serial") != -1;
+    // Dump pcap/log to serial too, valid for all scan/attack commands.
+    // Without an SD card, serial capture is the only way to save packets, so
+    // it is enabled by default.
+    #ifdef HAS_SD
+      wifi_scan_obj.save_serial = this->argSearch(&cmd_args, "-serial") != -1;
+    #else
+      wifi_scan_obj.save_serial = true;
+    #endif
 
     // Signal strength scan
     if (cmd_args.get(0) == SIGSTREN_CMD) {
